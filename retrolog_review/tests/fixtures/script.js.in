@@ -1,0 +1,3 @@
+"use strict";
+const block = document.getElementById("review-data");
+JSON.parse(block.textContent);

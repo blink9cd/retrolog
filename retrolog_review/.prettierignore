@@ -1,0 +1,15 @@
+node_modules
+package-lock.json
+# The page template carries three marker lines retrolog_review replaces whole and
+# byte for byte (the stylesheet link, the script tag and the policy meta). Prettier
+# would rewrite each (a void tag gains " />", a long meta wraps over several
+# lines), and the writer would then refuse the template, so the file is laid out
+# by hand and html-validate alone checks it.
+page/review.html
+# The samples' byte-exact files. review.json is a byte copy of retrolog_resolve's
+# sample review, and picks.example.json carries its SHA-256, so reformatting it
+# would make the picks name another review. expected/review.html is the tool's own
+# output, compared byte for byte by tests/test_review_samples.py; html-validate
+# still checks it, and it passes.
+samples/review.json
+samples/expected/review.html

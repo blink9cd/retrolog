@@ -1,0 +1,54 @@
+{
+  "schema": 1,
+  "review_sha256": "8affb6df29e407bdb6eaec5149934b08c5c7414c2ce35816dfd5a1006910afa9",
+  "picks": [
+    {
+      "medium": "book",
+      "title": "Placeholder Book Five",
+      "rows": ["2010/read.txt:6"],
+      "answer": {
+        "unresolvable": true
+      }
+    },
+    {
+      "medium": "book",
+      "title": "Placeholder Book Three",
+      "rows": ["2010/read.txt:4"],
+      "answer": "keep"
+    },
+    {
+      "medium": "film",
+      "title": "Placeholder Film Six",
+      "rows": ["2010/seen.txt:13"],
+      "answer": "keep"
+    },
+    {
+      "medium": "film",
+      "title": "Placeholder Film Three",
+      "rows": ["2010/seen.txt:11"],
+      "answer": {
+        "tmdb_id": "1000020"
+      }
+    },
+    {
+      "medium": "film",
+      "title": "Placeholder Film Two",
+      "rows": ["2010/seen.txt:10"],
+      "answer": {
+        "tmdb_id": "1000005"
+      }
+    },
+    {
+      "medium": "film",
+      "title": "Placeholder Story II",
+      "rows": ["2010/seen.txt:14"],
+      "answer": "keep"
+    },
+    {
+      "medium": "film",
+      "title": "The Placeholder Hour",
+      "rows": ["2010/seen.txt:15"],
+      "answer": "keep"
+    }
+  ]
+}

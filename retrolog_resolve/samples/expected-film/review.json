@@ -1,0 +1,164 @@
+{
+  "counts": {
+    "ambiguous": 1,
+    "failed": 0,
+    "most-voted": 1,
+    "no-isbn": 0,
+    "not-found": 1,
+    "override-applied": 2,
+    "override-mismatch": 1,
+    "override-unused": 0,
+    "re-searched": 1,
+    "variant": 1
+  },
+  "entries": [
+    {
+      "candidates": [],
+      "detail": "overrides[1]: tmdb_id",
+      "error": false,
+      "kind": "override-applied",
+      "medium": "film",
+      "rows": [
+        "2010/seen.txt:3"
+      ],
+      "title": "Metropolis"
+    },
+    {
+      "candidates": [],
+      "detail": "overrides[5] names another title for this line",
+      "error": true,
+      "kind": "override-mismatch",
+      "medium": "film",
+      "rows": [
+        "2010/seen.txt:12"
+      ],
+      "title": "Placeholder Film Five"
+    },
+    {
+      "candidates": [],
+      "detail": "overrides[2]: tmdb_id",
+      "error": false,
+      "kind": "override-applied",
+      "medium": "film",
+      "rows": [
+        "2010/seen.txt:7"
+      ],
+      "title": "Placeholder Film One"
+    },
+    {
+      "candidates": [
+        {
+          "creator": "Director Six",
+          "id": "1000010",
+          "isbn13": "",
+          "original_title": "Placeholder Film Six",
+          "title": "Placeholder Film Six",
+          "votes": 1200,
+          "year": 1994
+        },
+        {
+          "creator": "Director Seven",
+          "id": "1000011",
+          "isbn13": "",
+          "original_title": "Placeholder Film Six",
+          "title": "Placeholder Film Six",
+          "votes": 40,
+          "year": 2003
+        }
+      ],
+      "detail": "most votes: 1200 against 40",
+      "error": false,
+      "kind": "most-voted",
+      "medium": "film",
+      "rows": [
+        "2010/seen.txt:13"
+      ],
+      "title": "Placeholder Film Six"
+    },
+    {
+      "candidates": [],
+      "detail": "no candidate within the year bounds",
+      "error": false,
+      "kind": "not-found",
+      "medium": "film",
+      "rows": [
+        "2010/seen.txt:11"
+      ],
+      "title": "Placeholder Film Three"
+    },
+    {
+      "candidates": [
+        {
+          "creator": "Director Four",
+          "id": "1000004",
+          "isbn13": "",
+          "original_title": "Placeholder Film Two",
+          "title": "Placeholder Film Two",
+          "votes": null,
+          "year": 1999
+        },
+        {
+          "creator": "Director Five",
+          "id": "1000005",
+          "isbn13": "",
+          "original_title": "Placeholder Film Two",
+          "title": "Placeholder Film Two",
+          "votes": null,
+          "year": 2008
+        }
+      ],
+      "detail": "2 exact titles",
+      "error": false,
+      "kind": "ambiguous",
+      "medium": "film",
+      "rows": [
+        "2010/seen.txt:10"
+      ],
+      "title": "Placeholder Film Two"
+    },
+    {
+      "candidates": [
+        {
+          "creator": "Director Eight",
+          "id": "1000013",
+          "isbn13": "",
+          "original_title": "Placeholder Story 2",
+          "title": "Placeholder Story 2",
+          "votes": 85,
+          "year": 2006
+        }
+      ],
+      "detail": "matched ignoring a sequel numeral",
+      "error": false,
+      "kind": "variant",
+      "medium": "film",
+      "rows": [
+        "2010/seen.txt:14"
+      ],
+      "title": "Placeholder Story II"
+    },
+    {
+      "candidates": [
+        {
+          "creator": "Director Nine",
+          "id": "1000015",
+          "isbn13": "",
+          "original_title": "Placeholder Hour",
+          "title": "Placeholder Hour",
+          "votes": null,
+          "year": 2002
+        }
+      ],
+      "detail": "found by searching without a leading article",
+      "error": false,
+      "kind": "re-searched",
+      "medium": "film",
+      "rows": [
+        "2010/seen.txt:15"
+      ],
+      "title": "The Placeholder Hour"
+    }
+  ],
+  "medium": "film",
+  "schema_version": 1
+}

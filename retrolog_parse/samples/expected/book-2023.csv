@@ -1,0 +1,9 @@
+medium,title,creator,year,date,date_is_approximate,color,rating_raw,comment,rewatch,section,source_file,source_line
+book,Book Three,,,2023-12-31,true,,3,,false,work,23/books.txt,4
+book,Book Four,,,2023-12-31,true,,2/3,,false,work,23/books.txt,5
+book,Book Five,,,2023-12-31,true,,4,,true,work,23/books.txt,6
+book,Book Six,,,2023-12-31,true,,1,a gift,false,work,23/books.txt,7
+book,Long Book,,,2023-12-31,true,,4,,false,home,23/books.txt,9
+book,Odd Book,,,2023-12-31,true,,2,,false,home,23/books.txt,10
+book,Other Book - q,,,2023-12-31,true,,,,false,home,23/books.txt,11
+book,Book Seven,,,2023-12-31,true,,,,false,home,23/books.txt,12

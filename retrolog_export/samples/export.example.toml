@@ -1,0 +1,69 @@
+# An example export config for retrolog_export. Keep yours next to your notes, never in
+# a repository: a real one names rating codes and a title from your own lists. Every
+# title, key, word and tag below is a made-up example.
+#
+# An unknown key, a missing one, or a value of the wrong shape stops the run before
+# anything is written, with a message naming the key and never its value.
+
+# The layout version of this file. Only 1 exists.
+schema = 1
+
+# How films are written for Letterboxd's importer. A file with no [letterboxd] table
+# configures no Letterboxd export.
+[letterboxd]
+# Write each dated row's date as its WatchedDate (true), or leave the column empty
+# (false), so the import screen can make diary entries or just mark films watched.
+watched_date = true
+# Tags added to every exported row, such as one that marks the import. Each is 1 to 50
+# characters with no comma, quote, or control character, and starts with "retrolog",
+# so none can collide with a tag the account already uses and the import can be found
+# from its tag pages; any other tag stops the run. [] adds none.
+tags = ["retrolog"]
+# A note added to the Review column, above the row's comment. It may hold {year} and
+# {date}, the watch's year and ISO date ({{ and }} for literal braces), and at most
+# 500 characters; an undated row leaves out a note naming either. "" adds no note.
+review_note = "Retrolog review. Original watch: {year}."
+# Optional: a sentence added after the note, on a rated row only, so an unrated row
+# keeps its note. It may hold {rating}, the word [letterboxd.rating_names] gives the
+# row's rating key, and at most 500 characters. "" or leaving it out adds none.
+review_note_rating = "Original rating: {rating}."
+# Which rows the note and its sentence go on: "commented" (rows with a comment) or
+# "all".
+review_note_rows = "commented"
+
+# Each rating key a row can carry, as the parse rules give it, mapped to stars from
+# 0.5 to 5 in halves. A split code's key is both keys joined by "/", and may share its
+# stars with another key, as "b/c" shares "b"'s here. A row rated with a key missing
+# here stops the run; an unrated row is exported with no rating.
+[letterboxd.ratings]
+"a" = 1.5
+"b" = 3
+"c" = 4
+"b/c" = 3
+
+# Optional: a tag added to the rows of each rating key named here, which must also be
+# in [letterboxd.ratings], and which starts with "retrolog" like every tag. A key left
+# out adds no tag. It keeps the verdict the lists gave when the star mapping cannot,
+# such as a split code sharing its stars with another key, or a film rerated later.
+[letterboxd.rating_tags]
+"a" = "retrolog-low"
+"c" = "retrolog-high"
+"b/c" = "retrolog-mid-high"
+
+# Optional: the word review_note_rating prints for each rating key, 1 to 50 characters,
+# each key also in [letterboxd.ratings]. A sentence naming {rating} needs a word for
+# every key there.
+[letterboxd.rating_names]
+"a" = "low"
+"b" = "mid"
+"c" = "high"
+"b/c" = "mid/high"
+
+# Optional: the source row from which nothing is exported, because the account already
+# holds it and every later one. It names the list file, its line, and the title on that
+# line (matched ignoring case, spacing, and punctuation). Leave the table out to export
+# every row.
+[letterboxd.cutoff]
+file = "2019/films.txt"
+line = 12
+title = "Placeholder Film Nine"

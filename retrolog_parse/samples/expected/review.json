@@ -1,0 +1,91 @@
+{
+  "counts": {
+    "color-outlier": 0,
+    "heading-with-rating": 0,
+    "legend": 1,
+    "legend-order": 0,
+    "no-color": 0,
+    "no-medium": 0,
+    "override-applied": 1,
+    "override-mismatch": 0,
+    "progress-skipped": 1,
+    "progress-unmatched": 0,
+    "read-error": 0,
+    "rule-file-missing": 0,
+    "shape-conflict": 0,
+    "skipped": 0,
+    "stray-mark": 0,
+    "term-mismatch": 0,
+    "unknown-code": 1,
+    "unparsed": 1,
+    "unplaced": 1,
+    "unrated": 2
+  },
+  "items": [
+    {
+      "detail": "no term block, folder or file name dates this entry",
+      "error": false,
+      "kind": "unplaced",
+      "line": 1,
+      "rel_path": "21-22/more books.txt",
+      "text": "Book Undated - b"
+    },
+    {
+      "detail": "override action 'rating' applied",
+      "error": false,
+      "kind": "override-applied",
+      "line": 10,
+      "rel_path": "23/books.txt",
+      "text": "Odd Book - q"
+    },
+    {
+      "detail": "the letter code after the dash is not one the rules define",
+      "error": false,
+      "kind": "unknown-code",
+      "line": 11,
+      "rel_path": "23/books.txt",
+      "text": "Other Book - q"
+    },
+    {
+      "detail": "this entry has no rating",
+      "error": false,
+      "kind": "unrated",
+      "line": 11,
+      "rel_path": "23/books.txt",
+      "text": "Other Book - q"
+    },
+    {
+      "detail": "this entry has no rating",
+      "error": false,
+      "kind": "unrated",
+      "line": 12,
+      "rel_path": "23/books.txt",
+      "text": "Book Seven"
+    },
+    {
+      "detail": "no entry, heading or section could be read from this line",
+      "error": false,
+      "kind": "unparsed",
+      "line": 13,
+      "rel_path": "23/books.txt",
+      "text": "~~ ~~"
+    },
+    {
+      "detail": "legend marks (color = rating): 33A02C = 1, 6A3D9A = 2, FF7F00 = 3, A6CEE3 = 4",
+      "error": false,
+      "kind": "legend",
+      "line": 1,
+      "rel_path": "23/movies.docx",
+      "text": "     Film Four"
+    },
+    {
+      "detail": "a progress note finished by a later rated entry",
+      "error": false,
+      "kind": "progress-skipped",
+      "line": 1,
+      "rel_path": "23/spring books.txt",
+      "text": "Long Book - 120/300"
+    }
+  ],
+  "schema_version": 1
+}

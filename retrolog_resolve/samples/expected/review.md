@@ -1,0 +1,68 @@
+# retrolog_resolve review
+
+15 review items, 3 of them errors.
+
+## override-unused (1, error)
+
+| Medium | Title | Rows | Detail | Candidates |
+| --- | --- | --- | --- | --- |
+| book | placeholder book nine | | overrides[4]: no row has this medium and title | |
+
+## override-mismatch (1, error)
+
+| Medium | Title | Rows | Detail | Candidates |
+| --- | --- | --- | --- | --- |
+| film | Placeholder Film Five | 2010/seen.txt:12 | overrides[5] names another title for this line | |
+
+## failed (1, error)
+
+| Medium | Title | Rows | Detail | Candidates |
+| --- | --- | --- | --- | --- |
+| book | Placeholder Book Six | 2010/read.txt:7 | openlibrary: not in the cache | |
+
+## ambiguous (2)
+
+| Medium | Title | Rows | Detail | Candidates |
+| --- | --- | --- | --- | --- |
+| book | Placeholder Book Four | 2010/read.txt:5 | 2 exact titles | Placeholder Book Four, 1901, Author Four, /works/OL1000013W; Placeholder Book Four, 1901, Author Five, /works/OL1000014W |
+| film | Placeholder Film Two | 2010/seen.txt:10 | 2 exact titles | Placeholder Film Two, 1999, Director Four, 1000004; Placeholder Film Two, 2008, Director Five, 1000005 |
+
+## not-found (2)
+
+| Medium | Title | Rows | Detail | Candidates |
+| --- | --- | --- | --- | --- |
+| book | Placeholder Book Five | 2010/read.txt:6 | no candidate within the year bounds | |
+| film | Placeholder Film Three | 2010/seen.txt:11 | no candidate within the year bounds | |
+
+## most-voted (1)
+
+| Medium | Title | Rows | Detail | Candidates |
+| --- | --- | --- | --- | --- |
+| film | Placeholder Film Six | 2010/seen.txt:13 | most votes: 1200 against 40 | Placeholder Film Six, 1994, Director Six, 1000010, 1200 votes; Placeholder Film Six, 2003, Director Seven, 1000011, 40 votes |
+
+## variant (1)
+
+| Medium | Title | Rows | Detail | Candidates |
+| --- | --- | --- | --- | --- |
+| film | Placeholder Story II | 2010/seen.txt:14 | matched ignoring a sequel numeral | Placeholder Story 2, 2006, Director Eight, 1000013, 85 votes |
+
+## re-searched (1)
+
+| Medium | Title | Rows | Detail | Candidates |
+| --- | --- | --- | --- | --- |
+| film | The Placeholder Hour | 2010/seen.txt:15 | found by searching without a leading article | Placeholder Hour, 2002, Director Nine, 1000015 |
+
+## no-isbn (1)
+
+| Medium | Title | Rows | Detail | Candidates |
+| --- | --- | --- | --- | --- |
+| book | Placeholder Book Three | 2010/read.txt:4 | resolved with no English edition carrying an ISBN | Placeholder Book Three, 1901, Author Three, /works/OL1000012W |
+
+## override-applied (4)
+
+| Medium | Title | Rows | Detail | Candidates |
+| --- | --- | --- | --- | --- |
+| book | Moby Dick | 2010/read.txt:1 | overrides[0]: isbn13, ol_work | |
+| book | Placeholder Book One | 2010/read.txt:2 | overrides[3]: unresolvable | |
+| film | Metropolis | 2010/seen.txt:3 | overrides[1]: tmdb_id | |
+| film | Placeholder Film One | 2010/seen.txt:7 | overrides[2]: tmdb_id | |

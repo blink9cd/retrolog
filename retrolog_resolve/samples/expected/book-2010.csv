@@ -1,0 +1,8 @@
+medium,title,creator,year,date,date_is_approximate,color,rating_raw,comment,rewatch,section,source_file,source_line,resolve_status,isbn13,ol_work,tmdb_id,tmdb_title,tmdb_original_title
+book,Moby Dick,,,2010-03-04,false,,x,,false,,2010/read.txt,1,override,9780306406157,/works/OL1000001W,,,
+book,Placeholder Book One,,,2010-03-04,false,,x,,false,,2010/read.txt,2,override,,,,,
+book,Placeholder Book Two,Author Two,1901,2010-03-04,false,,x,,false,,2010/read.txt,3,resolved,9780000000002,/works/OL1000011W,,,
+book,Placeholder Book Three,Author Three,1901,2010-03-04,false,,x,,false,,2010/read.txt,4,resolved,,/works/OL1000012W,,,
+book,Placeholder Book Four,,,2010-03-04,false,,x,,false,,2010/read.txt,5,ambiguous,,,,,
+book,Placeholder Book Five,,,2010-03-04,false,,x,,false,,2010/read.txt,6,not-found,,,,,
+book,Placeholder Book Six,,,2010-03-04,false,,x,,false,,2010/read.txt,7,failed,,,,,

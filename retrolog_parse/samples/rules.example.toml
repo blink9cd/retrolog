@@ -1,0 +1,113 @@
+# An example rules file for retrolog_parse. Copy it next to your notes (never into a
+# repository: a real one describes your own lists), then change every value to match
+# how your lists are written. Every value below is a generic example, and as written
+# it reads the synthetic sample tree that build_parse_tree.py writes.
+#
+# Patterns are Python regular expressions, matched ignoring case. Write them in single
+# quotes ('...'), which TOML reads literally, so a backslash needs no doubling. An
+# unknown key, a missing one or a pattern with the wrong number of groups stops the run
+# before any file is read, with a message naming the key.
+
+# The layout version of this file. Only 1 exists.
+schema = 1
+
+[media]
+# Which files hold which kind of list, by shell-style file-name glob, ignoring case.
+# The first medium whose glob matches a file's name wins. A file no glob matches is
+# not read: it is listed as a "no-medium" error, so leave such files out with
+# --exclude.
+book = ["*book*"]
+film = ["*movie*", "*film*"]
+
+[ratings]
+# Rating letters: one lower-case letter -> the rating key it stands for. A line that
+# ends in a letter, such as "Some Book - c", is rated with that letter's key, here "3";
+# the dash is optional, so a title ending in a lone letter is read as rated. Codes are
+# lower-case: "- C" is listed as an unknown code. Keys are opaque labels; the export
+# step decides what each one means.
+letters = { a = "1", b = "2", c = "3", d = "4" }
+# Joins two letters into a split rating, so "b/c" is rated "2/3", first letter first.
+# It must not contain a letter, and no key may contain it.
+split_separator = "/"
+# Colors (RRGGBB) -> rating key, for Word files: a symbol mark's color, or an
+# unmarked entry's text color. These four colors, and their order, are arbitrary
+# examples that stand for no scale: replace them with the colors your files use.
+colors = { "33A02C" = "1", "6A3D9A" = "2", "FF7F00" = "3", "A6CEE3" = "4" }
+# How far (as Euclidean distance in RGB, 0-442) a color may sit from a listed color
+# and still count as it. A color near none, or equally near two with different keys,
+# is listed as a "color-outlier" and the entry is left unrated.
+color_tolerance = 40
+# The keys in the order a legend line (two or more untitled marks) lists them. A
+# legend in another order is listed as "legend-order". Leave it out, or empty, to
+# skip that check.
+legend_order = ["1", "2", "3", "4"]
+
+[shapes]
+# Symbol glyphs as "<Font>/<HEX4>" -> the rating keys that glyph may carry. A marked
+# entry whose color gives a key its glyph may not carry is listed as a
+# "shape-conflict"; the color still decides the rating. Glyphs not listed are not
+# checked. These two glyphs, and the keys they allow, are arbitrary examples.
+"Wingdings/F06C" = ["1", "2"]
+"Wingdings/F06E" = ["3", "4"]
+
+[lines]
+# Lines matching any of these are titles of a list, not entries.
+headings = ['^list of ', '^my (books|movies)']
+# A line that is exactly one of these words (ignoring case, with or without a
+# trailing ":") starts a section. The section is recorded on every entry after it,
+# until the next section line or the end of the file.
+sections = ["work", "home"]
+# An entry still in progress, such as "Long Book - 120/300". It must define a group
+# named "title", the part kept as the entry's title. A progress note is dropped when a
+# later entry of the same medium and title is rated, and listed either way.
+progress = '^(?P<title>.*?)\s*-\s*\d+/\d+$'
+
+[dates]
+# Every pattern below is matched against the folder a file sits in (the first folder
+# under --path) or against the file's own name, never against a line.
+#
+# A folder named for two years, such as "21-22"; exactly two groups, one per year.
+two_year_folder = '^(\d{2})-(\d{2})$'
+# A folder named for one year, such as "23"; exactly one group.
+one_year_folder = '^(\d{2})$'
+# Added to every two-digit year above: 2000 reads "23" as 2023. One value serves the
+# whole tree, so all of its years must lie in one century.
+century = 2000
+# Words in a file name that place a file of a two-year folder in its earlier year.
+earlier_words = ["autumn", "fall"]
+# Words in a file name that place it in the later year. A name holding words of both
+# lists, or of neither, leaves its entries undated unless a [[terms]] block dates them.
+later_words = ["spring", "summer"]
+# Patterns that state a year in a file name, such as "movies (24).txt"; exactly one
+# group, the two-digit year. A year found this way wins over the folder.
+explicit_year = ['\((\d{2})\)']
+# Words in a file name that name a month: the word -> month number 1-12. An entry is
+# dated the last day of that month, or of December when the name holds none.
+seasons = { winter = 1, spring = 4, summer = 7, autumn = 10 }
+
+# A block of lines dated by hand, when the folder and file name cannot date them.
+# "file" is relative to --path, with forward slashes; "lines" is [first, last],
+# counted from 1 (a Word file counts paragraphs); "date" is the date every line in the
+# block takes; "expect" is the first line's text. A block whose first line no longer
+# reads "expect" is listed as a "term-mismatch" error. Two blocks of one file may not
+# share a line. A block or override whose "file" the run does not find is listed as a
+# "rule-file-missing" error. Copy "expect" from the line's "text" in review.json, not
+# from review.md, which escapes and trims it.
+[[terms]]
+file = "21-22/movies.txt"
+lines = [1, 4]
+date = 2022-01-31
+expect = "Film One - b"
+
+# A correction for one line. "action" is one of: "skip" (not an entry), "rating" (use
+# "value" as its rating key, or a split such as "2/3"), "title" (use "value" as its
+# title, leaving it unrated) or "unrated" (an entry with no rating). "rating" and
+# "unrated" also take an unknown code out of the title. "expect" is the line's text:
+# an override whose line reads otherwise is not applied and is listed as an
+# "override-mismatch" error.
+[[overrides]]
+file = "23/books.txt"
+line = 10
+expect = "Odd Book - q"
+action = "rating"
+value = "2"

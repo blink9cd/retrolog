@@ -1,0 +1,49 @@
+# An example overrides file for retrolog_resolve. Keep yours next to your notes, never
+# in a repository: a real one names titles from your own lists. Every title and id
+# below is a made-up example.
+#
+# Each [[overrides]] entry settles one title the search could not, or settled wrongly.
+# It names the medium and the title as the parse output spells it; the match ignores
+# case, spacing and punctuation. An entry that also names a source file and line
+# applies to that one row only, and beats a title-only entry for it. An entry no row
+# matches is an error, so a stale one is noticed.
+#
+# Each entry gives exactly one answer:
+#   isbn13 = "..."       a book's ISBN-13, or an ISBN-10 (converted); check digit verified
+#   ol_work = "..."      a book's Open Library work key, /works/OL<digits>W
+#                        (a book may give isbn13 and ol_work together)
+#   tmdb_id = "..."      a film's TMDb id, digits only
+#   unresolvable = true  no id: the title is exported alone
+#
+# An unknown key, a missing one, or an id the medium cannot take stops the run before
+# anything is looked up, with a message naming the key.
+
+# The layout version of this file. Only 1 exists.
+schema = 1
+
+# Every row titled "Moby Dick" is this work, recorded with this edition's ISBN.
+[[overrides]]
+medium = "book"
+title = "Moby Dick"
+ol_work = "/works/OL1000001W"
+isbn13 = "978-0-306-40615-7"
+
+# Every row titled "Metropolis" is this film.
+[[overrides]]
+medium = "film"
+title = "Metropolis"
+tmdb_id = "1000001"
+
+# Only the row on line 7 of 2010/seen.txt; other rows with this title still search.
+[[overrides]]
+medium = "film"
+title = "Placeholder Film One"
+file = "2010/seen.txt"
+line = 7
+tmdb_id = "1000002"
+
+# A title no service lists.
+[[overrides]]
+medium = "book"
+title = "Placeholder Book One"
+unresolvable = true

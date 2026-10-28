@@ -1,0 +1,3 @@
+medium,title,creator,year,date,date_is_approximate,color,rating_raw,comment,rewatch,section,source_file,source_line
+book,Book One,,,2021-10-31,true,,3,,false,,21-22/autumn books.txt,1
+book,Book Two,,,2021-10-31,true,,1,,false,,21-22/autumn books.txt,2

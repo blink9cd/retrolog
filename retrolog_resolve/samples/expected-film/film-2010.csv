@@ -1,0 +1,10 @@
+medium,title,creator,year,date,date_is_approximate,color,rating_raw,comment,rewatch,section,source_file,source_line,resolve_status,isbn13,ol_work,tmdb_id,tmdb_title,tmdb_original_title
+film,Metropolis,,,2010-05-06,false,,y,,false,,2010/seen.txt,3,override,,,1000001,,
+film,Placeholder Film One,,,2010-05-06,false,,y,,false,,2010/seen.txt,7,override,,,1000002,,
+film,Placeholder Film One,,2001,2010-05-06,false,,y,,false,,2010/seen.txt,9,resolved,,,1000003,Placeholder Film One,Placeholder Film One
+film,Placeholder Film Two,,,2010-05-06,false,,y,,false,,2010/seen.txt,10,ambiguous,,,,,
+film,Placeholder Film Three,,,2010-05-06,false,,y,,false,,2010/seen.txt,11,not-found,,,,,
+film,Placeholder Film Five,,2005,2010-05-06,false,,y,,false,,2010/seen.txt,12,resolved,,,1000007,Placeholder Film Five,Film Cinq
+film,Placeholder Film Six,Director Six,1994,2010-05-06,false,,y,,false,,2010/seen.txt,13,resolved,,,1000010,Placeholder Film Six,Placeholder Film Six
+film,Placeholder Story II,Director Eight,2006,2010-05-06,false,,y,,false,,2010/seen.txt,14,resolved,,,1000013,Placeholder Story 2,Placeholder Story 2
+film,The Placeholder Hour,Director Nine,2002,2010-05-06,false,,y,,false,,2010/seen.txt,15,resolved,,,1000015,Placeholder Hour,Placeholder Hour

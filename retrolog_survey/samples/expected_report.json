@@ -1,0 +1,222 @@
+{
+  "converters": {
+    "libreoffice": "skipped",
+    "textutil": "skipped"
+  },
+  "groups": [
+    {
+      "ambiguous_encodings": 0,
+      "colors": {},
+      "conversions": [],
+      "emoji": {},
+      "encodings": {
+        "cp1252": 1
+      },
+      "errors": [],
+      "files": {
+        "doc": 0,
+        "docx": 0,
+        "excluded": 0,
+        "other": 1,
+        "symlink": 0,
+        "txt": 1,
+        "unreadable": 0
+      },
+      "fonts": {},
+      "group": "books",
+      "highlights": {},
+      "images": [],
+      "letter_tokens": {
+        "a": 1
+      },
+      "line_endings": {
+        "cr": 0,
+        "crlf": 2,
+        "lf": 0
+      },
+      "line_kinds": {
+        "blank": 0,
+        "colored": 0,
+        "emoji": 0,
+        "image": 0,
+        "letter_code": 1,
+        "symbol": 0,
+        "unclassified": 1
+      },
+      "non_ascii": {
+        "U+2013 EN DASH": 1,
+        "U+2018 LEFT SINGLE QUOTATION MARK": 1,
+        "U+2019 RIGHT SINGLE QUOTATION MARK": 1
+      },
+      "samples": {
+        "letter_code": [
+          {
+            "file": "books/notes.txt",
+            "line": 2,
+            "text": "Book B – a"
+          }
+        ],
+        "unclassified": [
+          {
+            "file": "books/notes.txt",
+            "line": 1,
+            "text": "Book A ‘worth it’"
+          }
+        ]
+      },
+      "shadings": {},
+      "styles": {},
+      "symbols": {}
+    },
+    {
+      "ambiguous_encodings": 0,
+      "colors": {
+        "0070C0": 1,
+        "00B050": 1
+      },
+      "conversions": [],
+      "emoji": {
+        "U+1F44D": 1
+      },
+      "encodings": {
+        "mac_roman": 1
+      },
+      "errors": [],
+      "files": {
+        "doc": 1,
+        "docx": 1,
+        "excluded": 0,
+        "other": 0,
+        "symlink": 0,
+        "txt": 1,
+        "unreadable": 0
+      },
+      "fonts": {
+        "Wingdings": 1
+      },
+      "group": "films",
+      "highlights": {
+        "yellow": 1
+      },
+      "images": [
+        {
+          "byte_size": 69,
+          "content_type": "image/png",
+          "count": 1,
+          "sha256_12": "b1ff9c8ea3a7"
+        }
+      ],
+      "letter_tokens": {
+        "a": 1,
+        "b": 2,
+        "c": 2,
+        "d": 1,
+        "f": 1,
+        "g": 2
+      },
+      "line_endings": {
+        "cr": 4,
+        "crlf": 0,
+        "lf": 0
+      },
+      "line_kinds": {
+        "blank": 1,
+        "colored": 3,
+        "emoji": 1,
+        "image": 1,
+        "letter_code": 3,
+        "symbol": 2,
+        "unclassified": 1
+      },
+      "non_ascii": {
+        "U+1F44D THUMBS UP SIGN": 1,
+        "U+2013 EN DASH": 1
+      },
+      "samples": {
+        "colored": [
+          {
+            "file": "films/rated.docx",
+            "line": 2,
+            "text": "Film B [#00B050]"
+          },
+          {
+            "file": "films/rated.docx",
+            "line": 3,
+            "text": "Film C [hl:yellow]"
+          },
+          {
+            "file": "films/rated.docx",
+            "line": 4,
+            "text": "Film D [shd:FF0000]"
+          }
+        ],
+        "emoji": [
+          {
+            "file": "films/rated.docx",
+            "line": 5,
+            "text": "Film E 👍"
+          }
+        ],
+        "image": [
+          {
+            "file": "films/rated.docx",
+            "line": 6,
+            "text": "[img:b1ff9c8ea3a7]"
+          }
+        ],
+        "letter_code": [
+          {
+            "file": "films/notes.txt",
+            "line": 1,
+            "text": "Film A (1999) g"
+          },
+          {
+            "file": "films/notes.txt",
+            "line": 4,
+            "text": "Film C b"
+          },
+          {
+            "file": "films/rated.docx",
+            "line": 7,
+            "text": "g Film F"
+          }
+        ],
+        "symbol": [
+          {
+            "file": "films/rated.docx",
+            "line": 1,
+            "text": "Film A [Wingdings/F043 #0070C0]"
+          },
+          {
+            "file": "films/rated.docx",
+            "line": 8,
+            "text": "C [Wingdings 'C' U+0043]"
+          }
+        ],
+        "unclassified": [
+          {
+            "file": "films/notes.txt",
+            "line": 2,
+            "text": "Film B – seen twice"
+          }
+        ]
+      },
+      "shadings": {
+        "FF0000": 1
+      },
+      "styles": {
+        "paragraph:Normal": 8
+      },
+      "symbols": {
+        "Wingdings/0043": 1,
+        "Wingdings/F043": 1
+      }
+    }
+  ],
+  "options": {
+    "converters": false,
+    "group_depth": 1,
+    "samples": 5
+  },
+  "schema_version": 1
+}

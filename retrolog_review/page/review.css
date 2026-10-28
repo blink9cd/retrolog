@@ -1,0 +1,274 @@
+/*
+ * The retrolog review page. Mobile first: one column with 16px gutters that
+ * never scrolls sideways at 375px, widening to a centered column on a desktop.
+ * Light and dark follow the system setting. Every choice row is the tap
+ * target, at least 44px tall, and keyboard focus is always visible.
+ */
+:root {
+  color-scheme: light dark;
+  --bg: #fafaf7;
+  --fg: #1d1d1b;
+  --muted: #5c5c57;
+  --card: #fff;
+  --line: #d6d6cf;
+  --accent: #1f5fa8;
+  --accent-fg: #fff;
+  --chosen: #e6eef8;
+  --warn-bg: #fff4d6;
+  --warn-fg: #5a4300;
+  --error: #a3221b;
+  --gutter: 16px;
+  --tap: 44px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #141413;
+    --fg: #ecece6;
+    --muted: #a8a8a0;
+    --card: #1e1e1c;
+    --line: #3b3b37;
+    --accent: #7fb2ef;
+    --accent-fg: #0b1a2b;
+    --chosen: #1f2c3c;
+    --warn-bg: #3a2f0e;
+    --warn-fg: #f5dd9a;
+    --error: #ff8a80;
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font:
+    16px/1.5 system-ui,
+    -apple-system,
+    "Segoe UI",
+    sans-serif;
+  overflow-wrap: anywhere;
+}
+
+.bar,
+.entries {
+  max-width: 48rem;
+  margin: 0 auto;
+  padding: 0 var(--gutter);
+}
+
+.bar {
+  padding-top: var(--gutter);
+}
+
+h1 {
+  margin: 0 0 0.25rem;
+  font-size: 1.5rem;
+}
+
+h2 {
+  margin: 0 0 0.25rem;
+  font-size: 1.15rem;
+}
+
+.progress {
+  margin: 0;
+  font-weight: 600;
+}
+
+.not-shown,
+.entry-meta,
+.entry-rows,
+.entry-detail {
+  margin: 0.25rem 0;
+  color: var(--muted);
+}
+
+.notice {
+  margin: 0.5rem 0;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  background: var(--warn-bg);
+  color: var(--warn-fg);
+}
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.toggle {
+  display: inline-flex;
+  gap: 0.5rem;
+  align-items: center;
+  min-height: var(--tap);
+}
+
+.save {
+  min-height: var(--tap);
+  padding: 0 1rem;
+  border: 0;
+  border-radius: 6px;
+  background: var(--accent);
+  color: var(--accent-fg);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* A secondary action beside Save picks file: outlined, so the two never read
+   as the same button. */
+.forget {
+  min-height: var(--tap);
+  padding: 0 1rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.entry {
+  margin: var(--gutter) 0;
+  padding: var(--gutter);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--card);
+}
+
+.entry.decided {
+  border-left: 4px solid var(--accent);
+}
+
+fieldset {
+  margin: 0.75rem 0 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+legend {
+  padding: 0;
+  margin-bottom: 0.25rem;
+  font-weight: 600;
+}
+
+.choice {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 0.75rem;
+  align-items: center;
+  min-height: var(--tap);
+  padding: 0.25rem 0.5rem;
+  border-radius: 6px;
+}
+
+.choice:has(input[type="radio"]:checked) {
+  background: var(--chosen);
+}
+
+/* The label fills the row so the whole row is the tap target. */
+.choice > label {
+  flex: 1 1 12rem;
+  padding: 0.5rem 0;
+  cursor: pointer;
+}
+
+.choice > input[type="radio"] {
+  width: 1.25rem;
+  height: 1.25rem;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.cand-title {
+  font-weight: 600;
+}
+
+.suggested {
+  margin-left: 0.5rem;
+  padding: 0 0.4rem;
+  border-radius: 4px;
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-size: 0.8rem;
+  vertical-align: 0.1em;
+}
+
+.cand-original,
+.cand-facts {
+  display: block;
+  color: var(--muted);
+}
+
+.catalog-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--tap);
+  color: var(--accent);
+}
+
+/* The id field drops to its own line under the "Type an id" choice. */
+.typed > .field-label {
+  flex-basis: 100%;
+  padding: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.typed-id {
+  flex: 1 1 100%;
+  min-height: var(--tap);
+  padding: 0 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+}
+
+.typed-id[aria-invalid="true"] {
+  border-color: var(--error);
+}
+
+.field-message {
+  flex-basis: 100%;
+  margin: 0.25rem 0 0;
+  color: var(--error);
+}
+
+.field-message:empty {
+  display: none;
+}
+
+.empty {
+  margin: var(--gutter) 0;
+  color: var(--muted);
+}
+
+:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* The script hides and shows by the attribute alone, so no display rule above
+   may outrank it. */
+[hidden] {
+  display: none !important;
+}
+
+@media (min-width: 48rem) {
+  h1 {
+    font-size: 1.75rem;
+  }
+}

@@ -1,0 +1,208 @@
+[project]
+name = "retrolog"
+version = "0.1.0"
+description = "Turn a folder of old .txt, .doc and .docx media lists into files Letterboxd can import"
+readme = "README.md"
+license = "AGPL-3.0-or-later"
+requires-python = ">=3.12"
+# Two runtime packages, each pinned to one exact release: python-docx, which reads .docx
+# bodies, and lxml, which python-docx is built on and which the survey also imports
+# directly, to read the raw WordprocessingML python-docx's API does not expose. The
+# licenses were read from the package metadata when pinned: python-docx MIT, lxml
+# BSD-3-Clause. A license can change between versions, so re-read it on every bump.
+# Everything else is standard-library only, the HTTP lookups included.
+dependencies = ["python-docx==1.2.0", "lxml==6.1.2"]
+
+[project.optional-dependencies]
+# Everything the suites need. hypothesis drives the property tests and nothing at runtime
+# imports it. python-docx and lxml are repeated here, exactly, because the survey and parse
+# suites build and read .docx files with them, and a check that installs this extra's
+# requirement strings on their own, before the project itself, would otherwise run them
+# without either.
+test = ["hypothesis==6.165.10", "python-docx==1.2.0", "lxml==6.1.2"]
+
+[tool.ruff]
+target-version = "py312"
+
+[tool.ruff.lint]
+# E4/E7/E9/F are ruff's classic default set, written out so the enabled rules are a
+# function of this file rather than of whichever ruff release is installed. PGH003/PGH004
+# require every suppression to carry a rule code. D adds the docstring rules (pep257),
+# minus D401's imperative-mood opinion, which rewords valid noun-phrase summaries.
+select = ["E4", "E7", "E9", "F", "PGH003", "PGH004", "D"]
+ignore = ["D401"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "pep257"
+
+[tool.ruff.lint.per-file-ignores]
+# Test method names self-document; a docstring per test would be noise.
+"**/test_*.py" = ["D"]
+
+[tool.mypy]
+python_version = "3.12"
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+# Every entry covers the same blind spot: an import that resolves at RUNTIME through a
+# sys.path insert mypy cannot see. Each tool puts the bootstrap folder on sys.path, the
+# bootstrap puts the shared libraries there, and each CLI and suite puts its own and its
+# siblings' src/ there.
+mypy_path = [
+  "$MYPY_CONFIG_FILE_DIR/retrolog_bootstrap",
+  "$MYPY_CONFIG_FILE_DIR/stdio_utf8",
+  "$MYPY_CONFIG_FILE_DIR/help_formatter",
+  "$MYPY_CONFIG_FILE_DIR/bounded_fetch",
+  # bounded_run puts its private src/ on sys.path at load time.
+  "$MYPY_CONFIG_FILE_DIR/bounded_run",
+  "$MYPY_CONFIG_FILE_DIR/bounded_run/src",
+  "$MYPY_CONFIG_FILE_DIR/live_pid_guard",
+  "$MYPY_CONFIG_FILE_DIR/retrolog_survey/src",
+  "$MYPY_CONFIG_FILE_DIR/retrolog_parse/src",
+  "$MYPY_CONFIG_FILE_DIR/retrolog_resolve/src",
+  "$MYPY_CONFIG_FILE_DIR/retrolog_export/src",
+  "$MYPY_CONFIG_FILE_DIR/retrolog_review/src",
+  # Each tool's sample builder, which that tool's CLI tests import to check the committed
+  # sample. The samples/ folders are not type-checked on their own, so each builder is
+  # checked through that import. Each builder has its own name, so no two share a module
+  # name.
+  "$MYPY_CONFIG_FILE_DIR/retrolog_survey/samples",
+  "$MYPY_CONFIG_FILE_DIR/retrolog_parse/samples",
+  "$MYPY_CONFIG_FILE_DIR/retrolog_resolve/samples",
+  "$MYPY_CONFIG_FILE_DIR/retrolog_export/samples",
+  "$MYPY_CONFIG_FILE_DIR/retrolog_review/samples",
+]
+
+# lxml ships no type stubs and no py.typed. survey_docx reads python-docx's raw
+# WordprocessingML through it (python-docx's own API does not expose w:sym), so the import
+# is real; scoped to lxml alone, since python-docx ships py.typed and is checked.
+[[tool.mypy.overrides]]
+module = ["lxml.*"]
+ignore_missing_imports = true
+
+# --- Configuration for an external checking toolchain. ---
+#
+# The [tool.*] tables below configure an external checking toolchain that is not included
+# with these tools, and can be ignored, except [tool.gate_cache], which
+# retrolog_resolve/tests/test_env_declared.py reads.
+
+[tool.pii_scan]
+# The license notice names the copyright holder, which is what it is for.
+exclude = ["LICENSE"]
+
+[tool.python_gate]
+# Each tool's samples/ holds the builder of its hand-verification input: a helper run by
+# hand and by that tool's CLI sample test, not a module of the tool, so it has no test of
+# its own to pair with. bounded_run's samples/ holds the grandchild fixture its live
+# boundary test launches, which deliberately never exits.
+exclude = [
+  "retrolog_survey/samples",
+  "retrolog_parse/samples",
+  "retrolog_resolve/samples",
+  "retrolog_export/samples",
+  "retrolog_review/samples",
+  "bounded_run/samples",
+]
+
+[tool.samples_presence]
+# Libraries with no input->output transform, so nothing in them runs by hand against a
+# sample. bounded_run is deliberately NOT here: it ships a samples/ pair.
+exempt = [
+  "retrolog_bootstrap",
+  "stdio_utf8",
+  "help_formatter",
+  "bounded_fetch",
+  "live_pid_guard",
+]
+
+[tool.cli_doc_consistency]
+run_help = true
+check_positionals = true
+# The sample builders each take one --out option, documented in the samples/README.md
+# beside each rather than in a companion doc of their own.
+exclude = [
+  "retrolog_survey/samples",
+  "retrolog_parse/samples",
+  "retrolog_resolve/samples",
+  "retrolog_export/samples",
+  "retrolog_review/samples",
+]
+
+[tool.stdio_policy]
+# The whole tree, libraries included: a library is exactly where a stray print() does not
+# belong.
+paths = ["."]
+
+[tool.file_length]
+# retrolog_review's samples/expected/ holds GENERATED output: review.html is the page the
+# tool writes, its stylesheet and script inlined whole, so its length is the sum of page/'s
+# files, and the samples test compares it byte for byte with a fresh build.
+exclude = ["retrolog_review/samples/expected"]
+
+[tool.claim_check.ignore_paths]
+# Tokens that hold a slash and are not tree paths: a split rating code (two rating keys
+# joined by the rules' separator), a Word symbol mark as the survey and parse print it (a
+# font and a glyph code), and the folder the survey writes a document's pictures into,
+# inside its own --out.
+"retrolog_parse/retrolog_parse.md" = ["b/c", "Wingdings/F06C"]
+"retrolog_export/samples/README.md" = ["b/c"]
+"retrolog_survey/retrolog_survey.md" = ["Wingdings/F043", "images/"]
+"retrolog_survey/samples/README.md" = ["Wingdings/F043"]
+
+[tool.prose_terms]
+# Words these tools' prose must not use, so they cannot creep back in: the names of the
+# standards file, the design-document folder, the larger tree and the sibling projects
+# these tools were developed beside, none of which ships with them, so a sentence that leans on one
+# explains nothing to its reader. "owner" and "spec" are not terms here: a file's owner is
+# what its mode bits name, and ``spec`` is a service's description throughout export.
+# The check skips samples/ folders by name, so those READMEs are held to the same words
+# by review.
+# Each entry waives itself: the declaration is not prose.
+#
+# `exclude` subtracts the one file that is data rather than prose: package-lock.json is
+# npm's integrity hashes, where a base64 run can spell a ruling tag.
+exclude = ["retrolog_review/package-lock.json"]
+terms = [
+  # prose: ignore[AGENTS] the declaration itself
+  "AGENTS",
+  # prose: ignore[superpowers] the declaration itself
+  "superpowers",
+  # prose: ignore[monorepo] the declaration itself
+  "monorepo",
+  # prose: ignore[personal_site] the declaration itself
+  "personal_site",
+  # prose: ignore[media_feeds] the declaration itself
+  "media_feeds",
+]
+
+[tool.prose_terms.patterns]
+# Shapes a single word cannot express, each naming a record no reader of these tools has:
+# a ruling, decision or review-finding label (a capital C, D, I, Q or R and one or two
+# digits, or two capitals joined by a hyphen and then a digit), a pointer into a tracking
+# list (the word entry or item and a number), and the design document the tools were
+# built from, cited by its definite article. State the rule, or name it ("the
+# most-votes rule"), instead.
+# C1 alone is left out of the labels: it is also Unicode's C1 control set, which the
+# vendored stdio_utf8 and bounded_fetch name by that name.
+ruling-tag = '(?<![0-9A-Za-z_-])(?-i:[DIQR][1-9][0-9]?|C[2-9]|C[1-9][0-9])(?![0-9A-Za-z_])'
+review-tag = '(?<![0-9A-Za-z_])(?-i:[A-Z]-[A-Z][0-9]{1,2})(?![0-9A-Za-z_])'
+entry-tag = '(?<![0-9A-Za-z_])entry\s+\d+'
+item-tag = '(?<![0-9A-Za-z_])items?\s+\d+'
+plan-cite = '(?<![0-9A-Za-z_])the\s+plan(?![0-9A-Za-z_])'
+
+[tool.dep_audit]
+# Pinning checks only in the inner loop; the network CVE audit is run on demand.
+offline = "skip"
+
+[tool.gate_cache]
+# The variables whose value changes which tests run, so a verdict recorded with one setting
+# is never replayed into a run with another. RETROLOG_RESOLVE_OFFLINE skips
+# retrolog_resolve's live tests, and RETROLOG_TMDB_TOKEN skips the TMDb one when absent.
+# RETROLOG_CONTACT is read only by retrolog_resolve's CLI, which every test isolates; it is
+# listed so the list stays exactly the project's reads.
+# retrolog_resolve/tests/test_env_declared.py fails when this list and the project's
+# environment reads, by literal or module-level constant, differ.
+env = [
+  "RETROLOG_CONTACT",
+  "RETROLOG_RESOLVE_OFFLINE",
+  "RETROLOG_TMDB_TOKEN",
+]

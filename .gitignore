@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.hypothesis/
+.coverage
+.coverage.*
+htmlcov/
+.venv/
+# No trailing slash: a node_modules that is a symlink (an install linked in from
+# elsewhere) is a file to git, and "node_modules/" matches only a directory.
+node_modules

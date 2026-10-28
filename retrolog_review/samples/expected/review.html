@@ -1,0 +1,872 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-jRbONJ6uRcJZba9l0Gf6QYTNAkeF4FWssVr1VSYSX5Y='; style-src 'sha256-uh33VChxoWy0Ppqktwi+pFRPEkTDaHjsVV3MRx/EA74='; connect-src 'none'; img-src 'none'; font-src 'none'; form-action 'none'; base-uri 'none'">
+<title>Retrolog review</title>
+<style>/*
+ * The retrolog review page. Mobile first: one column with 16px gutters that
+ * never scrolls sideways at 375px, widening to a centered column on a desktop.
+ * Light and dark follow the system setting. Every choice row is the tap
+ * target, at least 44px tall, and keyboard focus is always visible.
+ */
+:root {
+  color-scheme: light dark;
+  --bg: #fafaf7;
+  --fg: #1d1d1b;
+  --muted: #5c5c57;
+  --card: #fff;
+  --line: #d6d6cf;
+  --accent: #1f5fa8;
+  --accent-fg: #fff;
+  --chosen: #e6eef8;
+  --warn-bg: #fff4d6;
+  --warn-fg: #5a4300;
+  --error: #a3221b;
+  --gutter: 16px;
+  --tap: 44px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #141413;
+    --fg: #ecece6;
+    --muted: #a8a8a0;
+    --card: #1e1e1c;
+    --line: #3b3b37;
+    --accent: #7fb2ef;
+    --accent-fg: #0b1a2b;
+    --chosen: #1f2c3c;
+    --warn-bg: #3a2f0e;
+    --warn-fg: #f5dd9a;
+    --error: #ff8a80;
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font:
+    16px/1.5 system-ui,
+    -apple-system,
+    "Segoe UI",
+    sans-serif;
+  overflow-wrap: anywhere;
+}
+
+.bar,
+.entries {
+  max-width: 48rem;
+  margin: 0 auto;
+  padding: 0 var(--gutter);
+}
+
+.bar {
+  padding-top: var(--gutter);
+}
+
+h1 {
+  margin: 0 0 0.25rem;
+  font-size: 1.5rem;
+}
+
+h2 {
+  margin: 0 0 0.25rem;
+  font-size: 1.15rem;
+}
+
+.progress {
+  margin: 0;
+  font-weight: 600;
+}
+
+.not-shown,
+.entry-meta,
+.entry-rows,
+.entry-detail {
+  margin: 0.25rem 0;
+  color: var(--muted);
+}
+
+.notice {
+  margin: 0.5rem 0;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  background: var(--warn-bg);
+  color: var(--warn-fg);
+}
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.toggle {
+  display: inline-flex;
+  gap: 0.5rem;
+  align-items: center;
+  min-height: var(--tap);
+}
+
+.save {
+  min-height: var(--tap);
+  padding: 0 1rem;
+  border: 0;
+  border-radius: 6px;
+  background: var(--accent);
+  color: var(--accent-fg);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* A secondary action beside Save picks file: outlined, so the two never read
+   as the same button. */
+.forget {
+  min-height: var(--tap);
+  padding: 0 1rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.entry {
+  margin: var(--gutter) 0;
+  padding: var(--gutter);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--card);
+}
+
+.entry.decided {
+  border-left: 4px solid var(--accent);
+}
+
+fieldset {
+  margin: 0.75rem 0 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+legend {
+  padding: 0;
+  margin-bottom: 0.25rem;
+  font-weight: 600;
+}
+
+.choice {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 0.75rem;
+  align-items: center;
+  min-height: var(--tap);
+  padding: 0.25rem 0.5rem;
+  border-radius: 6px;
+}
+
+.choice:has(input[type="radio"]:checked) {
+  background: var(--chosen);
+}
+
+/* The label fills the row so the whole row is the tap target. */
+.choice > label {
+  flex: 1 1 12rem;
+  padding: 0.5rem 0;
+  cursor: pointer;
+}
+
+.choice > input[type="radio"] {
+  width: 1.25rem;
+  height: 1.25rem;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.cand-title {
+  font-weight: 600;
+}
+
+.suggested {
+  margin-left: 0.5rem;
+  padding: 0 0.4rem;
+  border-radius: 4px;
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-size: 0.8rem;
+  vertical-align: 0.1em;
+}
+
+.cand-original,
+.cand-facts {
+  display: block;
+  color: var(--muted);
+}
+
+.catalog-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--tap);
+  color: var(--accent);
+}
+
+/* The id field drops to its own line under the "Type an id" choice. */
+.typed > .field-label {
+  flex-basis: 100%;
+  padding: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.typed-id {
+  flex: 1 1 100%;
+  min-height: var(--tap);
+  padding: 0 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+}
+
+.typed-id[aria-invalid="true"] {
+  border-color: var(--error);
+}
+
+.field-message {
+  flex-basis: 100%;
+  margin: 0.25rem 0 0;
+  color: var(--error);
+}
+
+.field-message:empty {
+  display: none;
+}
+
+.empty {
+  margin: var(--gutter) 0;
+  color: var(--muted);
+}
+
+:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* The script hides and shows by the attribute alone, so no display rule above
+   may outrank it. */
+[hidden] {
+  display: none !important;
+}
+
+@media (min-width: 48rem) {
+  h1 {
+    font-size: 1.75rem;
+  }
+}
+</style>
+</head>
+<body>
+<header class="bar">
+  <h1>Retrolog review</h1>
+  <p id="progress" class="progress" aria-live="polite"></p>
+  <p id="not-shown" class="not-shown" hidden>Not shown here: <span id="not-shown-counts"></span>. See review.md, and fix those by editing the overrides file by hand.</p>
+  <p id="storage-notice" class="notice" role="status" hidden>This browser is not keeping your picks, so they will be lost on reload. Use Save picks file before you close this page.</p>
+  <div class="controls">
+    <label class="toggle"><input type="checkbox" id="only-undecided"> Show only undecided</label>
+    <button type="button" id="save-picks" class="save">Save picks file</button>
+    <button type="button" id="forget-picks" class="forget">Forget stored picks</button>
+  </div>
+  <p id="forgotten" class="notice" role="status" hidden>This browser no longer keeps the picks for this review. The picks on this page stay until you close or reload it.</p>
+  <p id="forget-failed" class="notice" role="alert" hidden>This browser refused to remove the stored picks. Clear this site's data in the browser's settings to remove them.</p>
+</header>
+<main class="entries">
+  <noscript><p>This page needs JavaScript to show the review.</p></noscript>
+  <p id="unreadable" class="notice" role="alert" hidden>The review data on this page could not be read.</p>
+  <p id="empty" class="empty" hidden>Nothing to decide.</p>
+  <div id="entries"></div>
+</main>
+<script type="application/json" id="review-data">{"schema":1,"review_sha256":"8affb6df29e407bdb6eaec5149934b08c5c7414c2ce35816dfd5a1006910afa9","medium":"all","not_shown":{"errors":3,"applied":4},"entries":[{"candidates":[],"detail":"no candidate within the year bounds","kind":"not-found","medium":"book","rows":["2010/read.txt:6"],"title":"Placeholder Book Five"},{"candidates":[{"creator":"Author Four","id":"/works/OL1000013W","isbn13":"","original_title":"","title":"Placeholder Book Four","votes":null,"year":1901},{"creator":"Author Five","id":"/works/OL1000014W","isbn13":"","original_title":"","title":"Placeholder Book Four","votes":null,"year":1901}],"detail":"2 exact titles","kind":"ambiguous","medium":"book","rows":["2010/read.txt:5"],"title":"Placeholder Book Four"},{"candidates":[{"creator":"Author Three","id":"/works/OL1000012W","isbn13":"","original_title":"","title":"Placeholder Book Three","votes":null,"year":1901}],"detail":"resolved with no English edition carrying an ISBN","kind":"no-isbn","medium":"book","rows":["2010/read.txt:4"],"title":"Placeholder Book Three"},{"candidates":[{"creator":"Director Six","id":"1000010","isbn13":"","original_title":"Placeholder Film Six","title":"Placeholder Film Six","votes":1200,"year":1994},{"creator":"Director Seven","id":"1000011","isbn13":"","original_title":"Placeholder Film Six","title":"Placeholder Film Six","votes":40,"year":2003}],"detail":"most votes: 1200 against 40","kind":"most-voted","medium":"film","rows":["2010/seen.txt:13"],"title":"Placeholder Film Six"},{"candidates":[],"detail":"no candidate within the year bounds","kind":"not-found","medium":"film","rows":["2010/seen.txt:11"],"title":"Placeholder Film Three"},{"candidates":[{"creator":"Director Four","id":"1000004","isbn13":"","original_title":"Placeholder Film Two","title":"Placeholder Film Two","votes":null,"year":1999},{"creator":"Director Five","id":"1000005","isbn13":"","original_title":"Placeholder Film Two","title":"Placeholder Film Two","votes":null,"year":2008}],"detail":"2 exact titles","kind":"ambiguous","medium":"film","rows":["2010/seen.txt:10"],"title":"Placeholder Film Two"},{"candidates":[{"creator":"Director Eight","id":"1000013","isbn13":"","original_title":"Placeholder Story 2","title":"Placeholder Story 2","votes":85,"year":2006}],"detail":"matched ignoring a sequel numeral","kind":"variant","medium":"film","rows":["2010/seen.txt:14"],"title":"Placeholder Story II"},{"candidates":[{"creator":"Director Nine","id":"1000015","isbn13":"","original_title":"Placeholder Hour","title":"Placeholder Hour","votes":null,"year":2002}],"detail":"found by searching without a leading article","kind":"re-searched","medium":"film","rows":["2010/seen.txt:15"],"title":"The Placeholder Hour"}]}</script>
+<script>// The review page's browser storage: where its picks are kept between visits.
+//
+// A CLASSIC script, like review.js, and inlined ahead of it into the same
+// <script> by retrolog_review. Every call is guarded: a browser may offer no
+// localStorage (a private window, blocked site data) or refuse a read or a
+// write, and the page must still work, so each helper reports failure instead
+// of throwing. Its helpers are exposed, frozen, as `globalThis.RetrologStorage`
+// for review.js; its shape is declared in review_types.d.ts.
+"use strict";
+
+(function (root) {
+  const STORAGE_PREFIX = "retrolog_review:";
+
+  /** The localStorage key for one review's picks. @param {string} sha */
+  function storageKey(sha) {
+    return STORAGE_PREFIX + sha;
+  }
+
+  /**
+   * The window's localStorage, or null when it is missing or refused.
+   * @param {{localStorage?: Storage}} win @returns {Storage | null}
+   */
+  function openStorage(win) {
+    try {
+      return win.localStorage ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * A review's stored text, null when none is stored; ok is false when
+   * storage is missing or refuses the read.
+   * @param {Storage | null} storage @param {string} sha
+   * @returns {{text: string | null, ok: boolean}}
+   */
+  function readStored(storage, sha) {
+    // A null storage throws here too, so one catch covers missing and refused.
+    try {
+      const text = /** @type {Storage} */ (storage).getItem(storageKey(sha));
+      return { text, ok: true };
+    } catch {
+      return { text: null, ok: false };
+    }
+  }
+
+  /**
+   * Store every decided answer; false when storage is missing or refuses.
+   * @param {Storage | null} storage @param {string} sha @param {Answers} answers
+   */
+  function saveAnswers(storage, sha, answers) {
+    const kept = Object.fromEntries([...answers].filter(([, a]) => a !== null));
+    // As in readStored, a null storage throws and lands in the same catch.
+    try {
+      const key = storageKey(sha);
+      /** @type {Storage} */ (storage).setItem(key, JSON.stringify(kept));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Remove a review's stored answers; false when storage is missing or
+   * refuses. Other reviews' keys, and every other page's, are left alone.
+   * @param {Storage | null} storage @param {string} sha
+   */
+  function forgetAnswers(storage, sha) {
+    // As in readStored, a null storage throws and lands in the same catch.
+    try {
+      /** @type {Storage} */ (storage).removeItem(storageKey(sha));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  const api = Object.freeze({
+    forgetAnswers,
+    openStorage,
+    readStored,
+    saveAnswers,
+    storageKey,
+  });
+  Object.defineProperty(root, "RetrologStorage", { value: api });
+})(globalThis);
+
+// The retrolog review page: a section and a choice per title retrolog_resolve
+// could not settle alone, and a button saving the choices as picks.json.
+//
+// A CLASSIC script, not a module: retrolog_review inlines it into a plain
+// <script> so the page runs from file://, where a module would be refused. It
+// reads the `review-data` JSON block, keeps each choice in localStorage as it
+// is made (until Forget stored picks removes them), and makes no request of
+// any kind. Fixed copy is in review.html.
+// Its helpers are exposed, frozen, as `globalThis.RetrologReview` for the
+// suites; `boot` is the only line that runs on load. The types its JSDoc names
+// (Entry, Answer, Slot and the rest) are declared in review_types.d.ts. The
+// storage helpers come from review_storage.js, inlined ahead of this file.
+"use strict";
+
+(function (root) {
+  const { storageKey, openStorage, readStored, saveAnswers, forgetAnswers } =
+    root.RetrologStorage;
+  // The kinds whose resolve result stands unless the operator changes it.
+  const KEEP_KINDS = ["most-voted", "variant", "re-searched", "no-isbn"];
+  // NUL cannot occur in a title, so medium, title and row never run together.
+  const KEY_SEPARATOR = "\u0000";
+  const ID_KEYS = ["tmdb_id", "ol_work", "isbn13"];
+  const DIGITS = /^\d+$/;
+  const WORK_ID = /^\/works\/OL\d+W$/;
+  // Ten or thirteen characters, all digits but a final X (ISBN-10's check).
+  const ISBN = /^(?:\d{9}|\d{12})[\dX]$/;
+  const ISBN_NOISE = /[-\s]/g;
+  const TMDB_MOVIE = "https://www.themoviedb.org/movie/";
+  const OPEN_LIBRARY = "https://openlibrary.org";
+  const CANDIDATE = "candidate-";
+  const PICKS_FILE = "picks.json";
+  const PICKS_SCHEMA = 1;
+  const BAD_FILM_ID = "Not a TMDb id: type its digits only.";
+  const BAD_BOOK_ID =
+    "Not a work id or ISBN: type /works/OL…W, or 10 or 13 digits.";
+
+  /**
+   * An entry's storage key: its medium, title and first row. resolve groups
+   * rows by both years too, so one title can make several entries; no row is
+   * in two of them, so the first row tells them apart.
+   * @param {{medium: string, title: string, rows: string[]}} entry
+   */
+  function entryKey(entry) {
+    return [entry.medium, entry.title, entry.rows[0]].join(KEY_SEPARATOR);
+  }
+
+  /** `n word`, with an s unless n is 1. @param {number} n @param {string} word */
+  function countOf(n, word) {
+    return n + " " + word + (n === 1 ? "" : "s");
+  }
+
+  /** What an entry starts on: keep, or undecided (null). @param {Entry} entry */
+  function startingAnswer(entry) {
+    return KEEP_KINDS.includes(entry.kind) ? "keep" : null;
+  }
+
+  /**
+   * Classify a typed id. A film's is digits only; a book's is a work id, or an
+   * ISBN of ten or thirteen digits once hyphens and spaces are dropped.
+   * @param {string} medium @param {string} text
+   * @returns {IdAnswer | null} null when the text is no valid id.
+   */
+  function classifyTypedId(medium, text) {
+    const id = text.trim();
+    const isbn = id.replace(ISBN_NOISE, "").toUpperCase();
+    if (medium === "film") return DIGITS.test(id) ? { tmdb_id: id } : null;
+    if (WORK_ID.test(id)) return { ol_work: id };
+    return ISBN.test(isbn) ? { isbn13: isbn } : null;
+  }
+
+  /**
+   * The answer picking `candidate` gives; a book's ISBN only if it has one.
+   * @param {string} medium @param {Candidate} candidate @returns {IdAnswer}
+   */
+  function candidateAnswer(medium, candidate) {
+    if (medium === "film") return { tmdb_id: candidate.id };
+    if (!candidate.isbn13) return { ol_work: candidate.id };
+    return { ol_work: candidate.id, isbn13: candidate.isbn13 };
+  }
+
+  /**
+   * A candidate's catalog page, or null with no usable id. The id must be its
+   * catalog's (a film's digits, a book's work key), so the link can never be
+   * turned toward another host or path.
+   * @param {string} medium @param {string} id @returns {string | null}
+   */
+  function catalogUrl(medium, id) {
+    if (medium !== "film") return WORK_ID.test(id) ? OPEN_LIBRARY + id : null;
+    return DIGITS.test(id) ? TMDB_MOVIE + id : null;
+  }
+
+  /** True for a plain JSON object, not null or an array. @param {unknown} v */
+  function isPlainObject(v) {
+    return typeof v === "object" && v !== null && !Array.isArray(v);
+  }
+
+  /** True for an answer shape picks.json may carry. @param {unknown} value */
+  function isAnswer(value) {
+    if (value === "keep") return true;
+    if (!isPlainObject(value)) return false;
+    const record = /** @type {Record<string, unknown>} */ (value);
+    const keys = Object.keys(record);
+    if (keys.length === 1 && record.unresolvable === true) return true;
+    const isId = (/** @type {string} */ key) =>
+      ID_KEYS.includes(key) && typeof record[key] === "string" && record[key];
+    return keys.length > 0 && keys.every(isId);
+  }
+
+  /**
+   * The answer in force: the operator's, else the entry's starting one.
+   * @param {Entry} entry @param {Answers} answers @returns {Answer | null}
+   */
+  function answerFor(entry, answers) {
+    const key = entryKey(entry);
+    if (!answers.has(key)) return startingAnswer(entry);
+    return /** @type {Answer | null} */ (answers.get(key));
+  }
+
+  /**
+   * picks.json's object: one pick per decided entry, in entry order, each
+   * naming its entry by medium, title and rows (in the data block's order).
+   * @param {ReviewData} data @param {Answers} answers
+   */
+  function buildPicks(data, answers) {
+    const picks = [];
+    for (const entry of data.entries) {
+      const answer = answerFor(entry, answers);
+      if (answer === null) continue;
+      const { medium, title, rows } = entry;
+      picks.push({ medium, title, rows: [...rows], answer });
+    }
+    return { schema: PICKS_SCHEMA, review_sha256: data.review_sha256, picks };
+  }
+
+  /** Stored text as an object; else empty. @param {string | null} text */
+  function parseStored(text) {
+    try {
+      const value = JSON.parse(text ?? "{}");
+      return isPlainObject(value) ? value : {};
+    } catch {
+      return {};
+    }
+  }
+
+  /**
+   * Read a review's stored answers, keeping only valid ones.
+   * @param {Storage | null} storage @param {string} sha
+   * @returns {{answers: Answers, ok: boolean}} ok is false when storage failed.
+   */
+  function loadAnswers(storage, sha) {
+    /** @type {Answers} */
+    const answers = new Map();
+    const { text, ok } = readStored(storage, sha);
+    for (const [key, value] of Object.entries(parseStored(text))) {
+      if (isAnswer(value)) answers.set(key, value);
+    }
+    return { answers, ok };
+  }
+
+  /**
+   * The page's review, or null when its data block cannot be read. The bare
+   * template's `{}` reads as a review with nothing in it.
+   * @param {Document} doc @returns {ReviewData | null}
+   */
+  function readData(doc) {
+    const block = doc.getElementById("review-data");
+    let raw;
+    try {
+      raw = JSON.parse(block === null ? "" : String(block.textContent));
+    } catch {
+      return null;
+    }
+    if (!isPlainObject(raw)) return null;
+    const { errors = 0, applied = 0 } = raw.not_shown || {};
+    const { review_sha256 = "", entries = [] } = raw;
+    return { review_sha256, not_shown: { errors, applied }, entries };
+  }
+
+  /**
+   * A new element with attributes and optional text.
+   * @param {Document} doc @param {string} tag
+   * @param {Record<string, string>} attrs @param {string} [text]
+   */
+  function make(doc, tag, attrs, text) {
+    const node = doc.createElement(tag);
+    for (const [key, value] of Object.entries(attrs))
+      node.setAttribute(key, value);
+    if (text !== undefined) node.textContent = text;
+    return node;
+  }
+
+  /** What `selector` names in `scope`. @param {ParentNode} scope @param {string} selector */
+  function find(scope, selector) {
+    // Every selector here names an element the page itself always holds.
+    return /** @type {HTMLInputElement} */ (scope.querySelector(selector));
+  }
+
+  /** A radio choice and its label. @param {Slot} slot @param {string} value */
+  function radioRow(slot, value, /** @type {string} */ text = "") {
+    const doc = slot.page.doc;
+    const id = "pick-" + slot.index + "-" + value;
+    const name = "pick-" + slot.index;
+    const row = make(doc, "div", { class: "choice" });
+    const label = make(doc, "label", { for: id }, text);
+    row.append(make(doc, "input", { type: "radio", name, value, id }), label);
+    return { row, label };
+  }
+
+  /** A candidate's year, creator and votes, where known. @param {Candidate} c */
+  function candidateFacts(c) {
+    const votes = typeof c.votes === "number" ? countOf(c.votes, "vote") : "";
+    const year = c.year ? String(c.year) : "";
+    return [year, c.creator, votes].filter(Boolean).join(", ");
+  }
+
+  /** A candidate's row: its facts, Suggested on the first, and its link. */
+  function candidateRow(/** @type {Slot} */ slot, /** @type {number} */ at) {
+    const { doc } = slot.page;
+    const { medium } = slot.entry;
+    const candidate = slot.entry.candidates[at];
+    const { row, label } = radioRow(slot, CANDIDATE + at);
+    const span = (/** @type {string} */ cls, /** @type {string} */ text) =>
+      label.append(make(doc, "span", { class: cls }, text));
+    row.classList.add("candidate");
+    span("cand-title", candidate.title);
+    if (at === 0) span("suggested", "Suggested");
+    const original = candidate.original_title;
+    if (original && original !== candidate.title) {
+      span("cand-original", "Original title: " + original);
+    }
+    const facts = candidateFacts(candidate);
+    if (facts) span("cand-facts", facts);
+    const href = catalogUrl(medium, candidate.id);
+    if (href === null) return row;
+    const site = medium === "film" ? "TMDb" : "Open Library";
+    const attrs = { class: "catalog-link", href, target: "_blank" };
+    const link = { ...attrs, rel: "noopener noreferrer" };
+    row.append(make(doc, "a", link, "View on " + site));
+    return row;
+  }
+
+  /** The "Type an id" row: its radio, the id field, and the field's message. */
+  function typedRow(/** @type {Slot} */ slot) {
+    const doc = slot.page.doc;
+    const { row } = radioRow(slot, "typed", "Type an id");
+    const id = "typed-" + slot.index;
+    const messageId = id + "-message";
+    const film = slot.entry.medium === "film";
+    const what = film ? "TMDb id" : "Open Library work id or ISBN";
+    const field = { type: "text", class: "typed-id", id, autocomplete: "off" };
+    const more = { spellcheck: "false", "aria-describedby": messageId };
+    const message = { class: "field-message", id: messageId };
+    row.classList.add("typed");
+    row.append(
+      make(doc, "label", { for: id, class: "field-label" }, what),
+      make(doc, "input", { ...field, ...more }),
+      make(doc, "p", { ...message, "aria-live": "polite" }),
+    );
+    return row;
+  }
+
+  /** The typed id's answer, marking the field and its message when invalid. */
+  function typedAnswer(/** @type {Slot} */ slot) {
+    const { medium } = slot.entry;
+    const field = find(slot.part, "input.typed-id");
+    const answer = classifyTypedId(medium, field.value);
+    const invalid = answer === null && field.value.trim() !== "";
+    const bad = medium === "film" ? BAD_FILM_ID : BAD_BOOK_ID;
+    find(slot.part, ".field-message").textContent = invalid ? bad : "";
+    if (invalid) field.setAttribute("aria-invalid", "true");
+    else field.removeAttribute("aria-invalid");
+    return answer;
+  }
+
+  /** The checked radio's answer. @param {Slot} slot @returns {Answer | null} */
+  function choiceAnswer(slot) {
+    const value = find(slot.part, "input[type=radio]:checked").value;
+    const { medium, candidates } = slot.entry;
+    if (value === "keep") return "keep";
+    if (value === "none") return { unresolvable: true };
+    if (value === "typed") return typedAnswer(slot);
+    const at = Number(value.slice(CANDIDATE.length));
+    return candidateAnswer(medium, candidates[at]);
+  }
+
+  /**
+   * Re-draw progress and decided marks; with `filter`, re-apply "Show only
+   * undecided" too, which typing skips so an entry cannot vanish mid-word.
+   * @param {Page} page @param {Slot[]} slots @param {boolean} filter
+   */
+  function refresh(page, slots, filter) {
+    const only = find(page.doc, "#only-undecided").checked;
+    let decided = 0;
+    for (const { entry, part } of slots) {
+      const isDecided = answerFor(entry, page.answers) !== null;
+      if (isDecided) decided += 1;
+      part.classList.toggle("decided", isDecided);
+      if (filter) part.hidden = only && isDecided;
+    }
+    const progress = decided + " of " + slots.length + " decided";
+    find(page.doc, "#progress").textContent = progress;
+  }
+
+  /**
+   * Record a slot's current choice, store it, and re-draw.
+   * @param {Slot} slot @param {Slot[]} slots @param {boolean} filter
+   */
+  function onChoice(slot, slots, filter) {
+    const { page } = slot;
+    const { storage, data, answers } = page;
+    answers.set(entryKey(slot.entry), choiceAnswer(slot));
+    const saved = saveAnswers(storage, data.review_sha256, answers);
+    // Shown on the first failure and never hidden again: picks already made
+    // are no safer for a later write succeeding.
+    if (!saved) find(page.doc, "#storage-notice").hidden = false;
+    refresh(page, slots, filter);
+  }
+
+  /** Check the radio an answer selects; a typed one also refills the field. */
+  function restoreChoice(/** @type {Slot} */ slot) {
+    const { entry } = slot;
+    const answer = answerFor(entry, slot.page.answers);
+    if (answer === null) return;
+    const canonical = (/** @type {Answer} */ a) =>
+      JSON.stringify(a, Object.keys(a).sort());
+    const matches = (/** @type {Candidate} */ c) =>
+      canonical(candidateAnswer(entry.medium, c)) === canonical(answer);
+    const at = entry.candidates.findIndex(matches);
+    let value = at >= 0 ? CANDIDATE + at : "typed";
+    if (answer === "keep") value = "keep";
+    else if (answer.unresolvable) value = "none";
+    else if (value === "typed") {
+      const typed = answer.tmdb_id ?? answer.ol_work ?? answer.isbn13;
+      find(slot.part, "input.typed-id").value = String(typed);
+    }
+    find(slot.part, 'input[value="' + value + '"]').checked = true;
+  }
+
+  /** An entry's section: its heading, facts, and fieldset of choices. */
+  function renderEntry(/** @type {Slot} */ slot) {
+    const { doc } = slot.page;
+    const { entry, part } = slot;
+    const meta = "Kind: " + entry.kind + ", medium: " + entry.medium;
+    const rows = "Rows: " + entry.rows.join(", ");
+    part.append(make(doc, "h2", {}, entry.title));
+    part.append(make(doc, "p", { class: "entry-meta" }, meta));
+    part.append(make(doc, "p", { class: "entry-rows" }, rows));
+    if (entry.detail) {
+      part.append(make(doc, "p", { class: "entry-detail" }, entry.detail));
+    }
+    const set = make(doc, "fieldset", {});
+    set.append(make(doc, "legend", {}, "Pick for " + entry.title));
+    if (startingAnswer(entry)) set.append(radioRow(slot, "keep", "Keep").row);
+    entry.candidates.forEach((_, at) => set.append(candidateRow(slot, at)));
+    set.append(typedRow(slot), radioRow(slot, "none", "None of these").row);
+    part.append(set);
+    restoreChoice(slot);
+  }
+
+  /**
+   * Wire a rendered slot: any change records the choice and re-filters;
+   * typing selects "Type an id" and records without re-filtering.
+   * @param {Slot} slot @param {Slot[]} slots
+   */
+  function wireEntry(slot, slots) {
+    const { part } = slot;
+    part.addEventListener("change", () => onChoice(slot, slots, true));
+    // Typing in the field is choosing it, so the radio follows the keyboard.
+    find(part, "input.typed-id").addEventListener("input", () => {
+      find(part, 'input[value="typed"]').checked = true;
+      onChoice(slot, slots, false);
+    });
+  }
+
+  /** Fill and show the not-shown line when anything was left off the page. */
+  function renderNotShown(/** @type {Page} */ page) {
+    const { errors, applied } = page.data.not_shown;
+    if (errors + applied === 0) return;
+    const counts = [
+      countOf(errors, "error"),
+      countOf(applied, "applied override"),
+    ];
+    find(page.doc, "#not-shown-counts").textContent = counts.join(" and ");
+    find(page.doc, "#not-shown").hidden = false;
+  }
+
+  /** Save picks.json through a blob link, then let the URL go. */
+  function savePicks(/** @type {Page} */ page) {
+    const { doc, win } = page;
+    const picks = buildPicks(page.data, page.answers);
+    const text = JSON.stringify(picks, null, 2) + "\n";
+    const blob = new win.Blob([text], { type: "application/json" });
+    const href = win.URL.createObjectURL(blob);
+    const link = make(doc, "a", { href, download: PICKS_FILE, hidden: "" });
+    doc.body.append(link);
+    link.click();
+    link.remove();
+    // Revoked after this turn rather than inside it: a browser may start
+    // reading the blob only once the click has been handled.
+    win.setTimeout(() => win.URL.revokeObjectURL(href), 0);
+  }
+
+  /**
+   * Forget this review's stored picks and store no more from this page view.
+   * The picks already made stay on the page, so Save picks file still holds
+   * them; the storage notice says they will not survive a reload.
+   */
+  function forgetPicks(/** @type {Page} */ page) {
+    const { doc } = page;
+    const forgotten = forgetAnswers(page.storage, page.data.review_sha256);
+    // A null storage makes every later save fail, which is what keeps the
+    // next pick from storing everything again.
+    page.storage = null;
+    find(doc, "#forgotten").hidden = !forgotten;
+    find(doc, "#forget-failed").hidden = forgotten;
+    find(doc, "#storage-notice").hidden = false;
+  }
+
+  /** Render the review into `doc` and wire its controls. */
+  function init(/** @type {Document} */ doc, /** @type {PageWindow} */ win) {
+    const data = readData(doc);
+    if (data === null) {
+      find(doc, "#unreadable").hidden = false;
+      return;
+    }
+    const storage = openStorage(win);
+    const { answers, ok } = loadAnswers(storage, data.review_sha256);
+    /** @type {Page} */
+    const page = { doc, win, data, storage, answers };
+    find(doc, "#storage-notice").hidden = ok;
+    renderNotShown(page);
+    const slots = data.entries.map((entry, index) => {
+      const part = make(doc, "section", { class: "entry" });
+      return { page, entry, index, part };
+    });
+    slots.forEach((slot) => renderEntry(slot));
+    slots.forEach((slot) => wireEntry(slot, slots));
+    find(doc, "#entries").append(...slots.map((slot) => slot.part));
+    find(doc, "#empty").hidden = slots.length > 0;
+    refresh(page, slots, true);
+    const toggle = find(doc, "#only-undecided");
+    toggle.addEventListener("change", () => refresh(page, slots, true));
+    const save = find(doc, "#save-picks");
+    save.addEventListener("click", () => savePicks(page));
+    const forget = find(doc, "#forget-picks");
+    forget.addEventListener("click", () => forgetPicks(page));
+  }
+
+  /** Run `init` where there is a page; false where there is none. */
+  function boot(/** @type {{document?: Document}} */ scope) {
+    if (scope.document === undefined) return false;
+    const win = /** @type {PageWindow} */ (/** @type {unknown} */ (scope));
+    init(scope.document, win);
+    return true;
+  }
+
+  const api = Object.freeze({
+    boot,
+    buildPicks,
+    candidateAnswer,
+    catalogUrl,
+    classifyTypedId,
+    countOf,
+    entryKey,
+    forgetAnswers,
+    init,
+    isAnswer,
+    loadAnswers,
+    openStorage,
+    readData,
+    saveAnswers,
+    startingAnswer,
+    storageKey,
+  });
+  Object.defineProperty(root, "RetrologReview", { value: api });
+  boot(root);
+})(globalThis);
+</script>
+</body>
+</html>

@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'none'; img-src 'none'; font-src 'none'; form-action 'none'; base-uri 'none'">
+<title>Retrolog review</title>
+<link rel="stylesheet" href="review.css">
+</head>
+<body>
+<header class="bar">
+  <h1>Retrolog review</h1>
+  <p id="progress" class="progress" aria-live="polite"></p>
+  <p id="not-shown" class="not-shown" hidden>Not shown here: <span id="not-shown-counts"></span>. See review.md, and fix those by editing the overrides file by hand.</p>
+  <p id="storage-notice" class="notice" role="status" hidden>This browser is not keeping your picks, so they will be lost on reload. Use Save picks file before you close this page.</p>
+  <div class="controls">
+    <label class="toggle"><input type="checkbox" id="only-undecided"> Show only undecided</label>
+    <button type="button" id="save-picks" class="save">Save picks file</button>
+    <button type="button" id="forget-picks" class="forget">Forget stored picks</button>
+  </div>
+  <p id="forgotten" class="notice" role="status" hidden>This browser no longer keeps the picks for this review. The picks on this page stay until you close or reload it.</p>
+  <p id="forget-failed" class="notice" role="alert" hidden>This browser refused to remove the stored picks. Clear this site's data in the browser's settings to remove them.</p>
+</header>
+<main class="entries">
+  <noscript><p>This page needs JavaScript to show the review.</p></noscript>
+  <p id="unreadable" class="notice" role="alert" hidden>The review data on this page could not be read.</p>
+  <p id="empty" class="empty" hidden>Nothing to decide.</p>
+  <div id="entries"></div>
+</main>
+<script type="application/json" id="review-data">{}</script>
+<script src="review.js"></script>
+</body>
+</html>

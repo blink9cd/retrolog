@@ -1,0 +1,4 @@
+medium,title,creator,year,date,date_is_approximate,color,rating_raw,comment,rewatch,section,source_file,source_line
+film,Film One,,,2022-01-31,true,,2,,false,,21-22/movies.txt,1
+film,Film Two,,,2022-01-31,true,,4,,false,,21-22/movies.txt,2
+film,Film Three,,,2022-01-31,true,,3,,false,,21-22/movies.txt,4

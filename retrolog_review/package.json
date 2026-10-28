@@ -1,0 +1,20 @@
+{
+  "name": "retrolog-review",
+  "version": "0.1.0",
+  "private": true,
+  "license": "AGPL-3.0-or-later",
+  "description": "The local review page retrolog_review writes: pick each title's film or book, then save the picks file.",
+  "scripts": {
+    "check": "prettier --check . && html-validate \"page/**/*.html\" && stylelint \"page/**/*.css\" && eslint .",
+    "test": "node --experimental-test-coverage --test-coverage-include=\"page/**/*.js\" --test-coverage-include-all --test-coverage-exclude=\"page/**/test_*.mjs\" --test-coverage-exclude=\"page/**/*_test_helpers.mjs\" --test-coverage-branches=100 --test-coverage-lines=100 --test-coverage-functions=100 --test \"page/test_*.mjs\""
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "eslint": "10.9.1",
+    "globals": "17.11.0",
+    "html-validate": "11.10.0",
+    "jsdom": "30.0.1",
+    "prettier": "3.9.6",
+    "stylelint": "17.14.1"
+  }
+}
