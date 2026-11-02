@@ -17,7 +17,7 @@ from pathlib import Path
 _TESTS = Path(__file__).resolve().parent
 _TOOL = _TESTS.parent
 # Inserted last first, so sys.path reads in retrolog_export.SOURCE_DIRS' order with the
-# tool's own src/ ahead of resolve's, parse's and the survey's.
+# tool's own src/ ahead of resolve's, parse's, and the survey's.
 sys.path.insert(0, str(_TOOL.parent / "retrolog_survey" / "src"))
 sys.path.insert(0, str(_TOOL.parent / "retrolog_parse" / "src"))
 sys.path.insert(0, str(_TOOL.parent / "retrolog_resolve" / "src"))
@@ -141,7 +141,7 @@ _ROW = ResolvedRow(
 _CONFIG = LetterboxdConfig(
     half_stars={"c": 7, "b/c": 6},
     rating_tags={},
-    tags=(),
+    tags=("retrolog",),
     watched_date=True,
     review_note="Retrolog review. Original watch: {year}.",
     review_note_rows="commented",
@@ -209,6 +209,34 @@ class RatingSentenceTest(unittest.TestCase):
             export_letterboxd.review_text(_ROW, config),
             "Retrolog review. Original watch: 2009.\n\nFine.",
         )
+
+
+class WithheldRatingTest(unittest.TestCase):
+    """A film the owner logged is sent with no stars, and nothing else changes."""
+
+    def _cells(self, *, withhold: bool) -> dict[str, str]:
+        config = dataclasses.replace(_CONFIG, rating_tags={"c": "retrolog-high"})
+        cells = export_letterboxd.row_cells(_ROW, config, withhold)
+        return dict(zip(export_letterboxd.COLUMNS, cells, strict=True))
+
+    def test_the_rating_cell_is_empty(self) -> None:
+        self.assertEqual(self._cells(withhold=False)["Rating"], "3.5")
+        self.assertEqual(self._cells(withhold=True)["Rating"], "")
+
+    def test_every_other_cell_is_unchanged(self) -> None:
+        kept = self._cells(withhold=False)
+        withheld = self._cells(withhold=True)
+        self.assertEqual(
+            {name: cell for name, cell in withheld.items() if name != "Rating"},
+            {name: cell for name, cell in kept.items() if name != "Rating"},
+        )
+        self.assertEqual(withheld["Tags"], "retrolog-high, retrolog")
+        self.assertIn("Original rating: high.", withheld["Review"])
+        self.assertEqual(withheld["WatchedDate"], "2009-03-14")
+
+    def test_stars_are_kept_by_default(self) -> None:
+        cells = export_letterboxd.row_cells(_ROW, _CONFIG)
+        self.assertEqual(cells[export_letterboxd.COLUMNS.index("Rating")], "3.5")
 
 
 if __name__ == "__main__":  # pragma: no cover - entry point

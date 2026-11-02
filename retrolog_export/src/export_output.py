@@ -20,7 +20,10 @@ from export_types import ReviewEntry
 # parse's cell escaping, the rule resolve's review page uses too, is imported rather
 # than restated: one rule for every review page the tools write, so a fix to it
 # reaches all of them.
-from parse_output import escape_cell
+from parse_output import count_line, escape_cell
+
+# The survey's plural rule, shared for the same reason.
+from survey_markdown import counted
 
 # The review.json layout version; a later incompatible layout bumps it.
 SCHEMA_VERSION = 1
@@ -55,8 +58,27 @@ def review_counts(
     return counts | dict(zip(TOTALS, totals, strict=True))
 
 
-def _entry_key(entry: ReviewEntry) -> tuple[str, str, tuple[str, ...]]:
-    """Title, then kind; rows settle a tie, so the order is total."""
+def summary_lines(counts: Mapping[str, int]) -> list[str]:
+    """The run's printed summary: its totals, then each kind that occurred; counts only.
+
+    No title, so standard output can be shared where ``review.md`` cannot.
+    """
+    lines = [
+        f"films sent: {counts['films-sent']}",
+        f"rows sent: {counts['rows-sent']}",
+        f"rows cut: {counts['rows-cut']}",
+        f"files: {counts['files']}",
+    ]
+    return lines + [
+        f"review {kind}: {counts[kind]}" for kind in REVIEW_KINDS if counts[kind]
+    ]
+
+
+def entry_order(entry: ReviewEntry) -> tuple[str, str, tuple[str, ...]]:
+    """The review's order of entries: title, then kind; rows settle a tie.
+
+    So the order is total. ``export_test_film`` chooses by it too.
+    """
     return (entry.title, entry.kind, entry.rows)
 
 
@@ -65,13 +87,13 @@ def review_json(entries: Sequence[ReviewEntry], *, counts: Mapping[str, int]) ->
     document = {
         "schema_version": SCHEMA_VERSION,
         "counts": dict(counts),
-        "entries": [asdict(entry) for entry in sorted(entries, key=_entry_key)],
+        "entries": [asdict(entry) for entry in sorted(entries, key=entry_order)],
     }
     return json.dumps(document, sort_keys=True, indent=2, ensure_ascii=False) + "\n"
 
 
 def _table_row(entry: ReviewEntry) -> str:
-    """One entry as a table row: title, rows and detail."""
+    """One entry as a table row: title, rows, and detail."""
     cells = (entry.title, _ROWS_JOIN.join(entry.rows), entry.detail)
     # An empty cell is one space between its pipes, the compact style's spelling.
     padded = (f" {text} " if text else " " for text in map(escape_cell, cells))
@@ -81,26 +103,20 @@ def _table_row(entry: ReviewEntry) -> str:
 def _kind_section(kind: str, entries: Sequence[ReviewEntry]) -> list[str]:
     """One kind's heading and table, its entries by title."""
     label = f"{len(entries)}, error" if kind in ERROR_KINDS else str(len(entries))
-    rows = [_table_row(entry) for entry in sorted(entries, key=_entry_key)]
+    rows = [_table_row(entry) for entry in sorted(entries, key=entry_order)]
     return ["", f"## {kind} ({label})", "", *_TABLE_HEAD, *rows]
 
 
 def _count_line(entries: Sequence[ReviewEntry], counts: Mapping[str, int]) -> str:
-    """What was sent and cut, then how many review items and errors."""
+    """What was sent and cut, then parse's count line of review items and errors."""
     errors = sum(1 for entry in entries if entry.kind in ERROR_KINDS)
     return (
-        f"{_counted(counts['rows-sent'], 'row')} of "
-        f"{_counted(counts['films-sent'], 'film')} sent in "
-        f"{_counted(counts['files'], 'file')}; "
-        f"{_counted(counts['rows-cut'], 'row')} cut. "
-        f"{_counted(len(entries), 'review item')}, "
-        f"{errors} of them {'an error' if errors == 1 else 'errors'}."
+        f"{counted(counts['rows-sent'], 'row')} of "
+        f"{counted(counts['films-sent'], 'film')} sent in "
+        f"{counted(counts['files'], 'file')}; "
+        f"{counted(counts['rows-cut'], 'row')} cut. "
+        f"{count_line(len(entries), errors)}"
     )
-
-
-def _counted(count: int, noun: str) -> str:
-    """``count`` and ``noun``, plural unless the count is exactly one."""
-    return f"{count} {noun}" if count == 1 else f"{count} {noun}s"
 
 
 def review_markdown(

@@ -2,7 +2,7 @@
 
 All but the live ``ps`` test run on every host. The loop takes its signal call, its signal
 numbers and its process table as seams and treats the numbers as opaque, so a recorder and
-scripted tables pin its ORDER -- freeze before walking, every stop before any kill -- with no
+scripted tables pin its order (freeze before walking, every stop before any kill) with no
 process at risk. The live nested-session test pins the real signals end to end.
 """
 
@@ -28,10 +28,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 import boundedrun_posix_tree
 from boundedrun_posix_tree import ProcessRow, TreeKillSeams
 
-# The determinism convention: a profile registered at import, never an `@settings`
-# decorator, which a fuzzing run applying its own settings could not override.
-# deadline=None: a per-example wall-clock deadline measures machine load, not correctness.
-# too_slow is suppressed for the same
+# A deterministic Hypothesis run: a profile registered at import, never an `@settings`
+# decorator, which an exploring campaign runner could not override. deadline=None: a per-example
+# wall-clock deadline measures machine load, not correctness. too_slow is suppressed for the same
 # reason: measured failing here at 4 draws in 1.02 s, one draw alone 0.98 s, on a loaded machine.
 settings.register_profile(
     "fuzz_gate_deterministic",
@@ -160,7 +159,7 @@ class ParseProcessTableTests(unittest.TestCase):
 def test_fuzz_parse_process_table(text: str) -> None:
     """Parsing never raises, and every row it keeps carries non-negative ids.
 
-    The property for the ``# fuzz-target`` on ``parse_process_table``: the
+    The property test paired with the ``# fuzz-target`` on ``parse_process_table``: the
     kill runs on whatever ``ps`` printed, so no output may stop it before it signals anything.
     """
     for row in boundedrun_posix_tree.parse_process_table(text):
@@ -283,7 +282,7 @@ class FreezeAndKillTests(unittest.TestCase):
         self.assertNotIn(_CALLER_GROUP, script.sent(_STOP) + script.sent(_KILL))
 
     def test_a_root_below_two_is_refused_before_any_signal(self) -> None:
-        """Regression: root 0 was sent STOP then KILL, and killpg(0) is the caller's own group.
+        """Root 0 is refused before any signal: killpg(0) would signal the caller's own group.
 
         Group 1 is init/launchd's, and a negative number is no group at all.
         """
@@ -297,16 +296,16 @@ class FreezeAndKillTests(unittest.TestCase):
                 self.assertEqual(script.log, [])
 
     def test_a_root_that_is_the_callers_own_group_is_refused(self) -> None:
-        """Regression: it was killed, and killing the caller's group kills the caller."""
+        """The caller's own group is refused: killing that group would kill the caller."""
         script = _Script([(_row(_ROOT, 1, _ROOT, "S"),)])
         with self.assertRaises(ValueError):
             self._run(script, own_group=_ROOT)
         self.assertEqual(script.log, [])
 
     def test_a_root_that_leads_no_group_of_its_own_is_refused(self) -> None:
-        """Regression: a root in another's group had that whole group collected and killed.
+        """A root in another's group is refused, so its group is never collected and killed.
 
-        Probed: ``tree_groups(600, rows)`` with 600 in group 400 returned ``{400, 600}``.
+        Unchecked, ``tree_groups(600, rows)`` with 600 in group 400 returns ``{400, 600}``.
         """
         rows = (_row(400, 1, 400), _row(_ROOT, 400, 400), _row(500, _ROOT, 500))
         script = _Script([rows, rows])
@@ -370,7 +369,7 @@ class TakeSnapshotTests(unittest.TestCase):
     def test_a_command_the_kill_cannot_end_yet_is_abandoned_not_awaited(self) -> None:
         # The regression: under heavy load macOS `ps` sat in an uninterruptible kernel wait
         # for minutes, where SIGKILL cannot end it, and the snapshot's post-kill reap waited
-        # with no bound -- inside a stop handler, so a stopped run hung.
+        # with no bound, inside a stop handler, so a stopped run hung.
         # A Popen whose kill does nothing stands in for that process, deterministically.
         _UnkillablePopen.started.clear()
         self.addCleanup(_UnkillablePopen.end_every_child)

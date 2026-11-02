@@ -9,8 +9,9 @@ replayed into a run with it set, and the reverse.
 
 So this test fails on a read nothing declares, or one whose name it cannot resolve, and
 on a declaration nothing reads, which stops a renamed variable leaving a stale name
-behind. It sits under retrolog_resolve, the only tool that reads the environment, but
-scans every tool of the project.
+behind. It sits under retrolog_resolve, the tool whose code reads the environment, but
+scans every tool of the project, tests included (retrolog_probe's live test reads the
+offline switch too).
 """
 
 from __future__ import annotations
@@ -75,7 +76,7 @@ def _names_read(source: str) -> tuple[set[str], list[str]]:
     """Every name ``source`` reads from the environment, and each read it cannot name.
 
     A key resolves when it is a string literal or a module-level constant bound to one.
-    Anything else comes back as ``"<line>: <read>"`` so the test FAILS on it: skipping a
+    Anything else comes back as ``"<line>: <read>"`` so the test fails on it: skipping a
     read the scan cannot name would reopen the gap it exists to close.
     """
     tree = ast.parse(source)

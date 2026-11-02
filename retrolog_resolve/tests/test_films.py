@@ -11,6 +11,7 @@ from hypothesis import strategies as st
 _TESTS = Path(__file__).resolve().parent
 _TOOL = _TESTS.parent
 sys.path.insert(0, str(_TOOL / "src"))
+sys.path.insert(0, str(_TOOL.parent / "retrolog_survey" / "src"))
 sys.path.insert(0, str(_TOOL.parent / "retrolog_parse" / "src"))
 sys.path.insert(0, str(_TESTS / "fixtures"))
 import resolve_films  # noqa: E402
@@ -32,6 +33,14 @@ _RESULTS = st.builds(
     original_title=st.text(max_size=10),
     release_date=st.one_of(st.just(""), st.text(max_size=10), st.dates().map(str)),
     vote_count=st.one_of(st.integers(-3, 10**6), st.none(), st.booleans()),
+)
+# Details bodies whose id is often the one asked for, so a match is reached often.
+_DETAILS = st.builds(
+    tmdb_result,
+    st.one_of(st.integers(-2, 3), st.text(max_size=2), st.booleans()),
+    st.one_of(st.text(max_size=10), st.none(), st.integers()),
+    original_title=st.one_of(st.text(max_size=10), st.integers()),
+    release_date=st.one_of(st.just(""), st.text(max_size=10), st.dates().map(str)),
 )
 _SEARCHES = st.lists(_RESULTS, max_size=4).map(lambda r: tmdb_search_payload(*r))
 _CREWS = st.lists(
@@ -82,6 +91,82 @@ class CreditsUrlTest(unittest.TestCase):
                 resolve_films.credits_url(text)
 
 
+class DetailsUrlTest(unittest.TestCase):
+    def test_details_url_names_the_movie_alone(self) -> None:
+        self.assertEqual(
+            resolve_films.details_url("424242"),
+            "https://api.themoviedb.org/3/movie/424242",
+        )
+
+    def test_details_url_refuses_anything_but_ascii_digits(self) -> None:
+        arabic_one = chr(0x0661)
+        for text in (
+            *("", "12/../34", "12a", " 12", "-12", "12?x=1", arabic_one),
+            *("0", "0603", "12345678901"),
+        ):
+            with self.subTest(text=text), self.assertRaises(ValueError):
+                resolve_films.details_url(text)
+
+
+class ParseDetailsTest(unittest.TestCase):
+    """A /movie/{id} body read as the candidate an override row takes its titles from."""
+
+    def test_a_details_body_reads_as_its_candidate(self) -> None:
+        body = tmdb_result(
+            603,
+            "Placeholder Night",
+            original_title="Nuit Placeholder",
+            release_date="1999-03-31",
+        )
+        self.assertEqual(
+            resolve_films.parse_details(body, "603"),
+            Candidate(
+                id="603",
+                title="Placeholder Night",
+                original_title="Nuit Placeholder",
+                year=1999,
+                creator="",
+                isbn13="",
+            ),
+        )
+
+    def test_leading_zeros_in_the_asked_id_still_match(self) -> None:
+        candidate = resolve_films.parse_details(tmdb_result(9, "Nine"), "009")
+        self.assertIsNotNone(candidate)
+
+    def test_a_missing_original_title_or_date_reads_as_empty(self) -> None:
+        body: dict[str, object] = {"id": 7, "title": "Placeholder Seven"}
+        candidate = resolve_films.parse_details(body, "7")
+        assert candidate is not None
+        self.assertEqual((candidate.original_title, candidate.year), ("", None))
+
+    def test_an_unusable_body_reads_as_none(self) -> None:
+        bodies: tuple[object, ...] = (
+            None,
+            [],
+            "details",
+            {},
+            {"id": 7},
+            {"id": 7, "title": None},
+            {"id": "7", "title": "Seven"},
+            {"id": True, "title": "Seven"},
+            {"id": 8, "title": "Eight, not the id asked for"},
+            {"success": False, "status_code": 34},
+        )
+        for body in bodies:
+            with self.subTest(body=body):
+                self.assertIsNone(resolve_films.parse_details(body, "7"))
+
+    @given(st.one_of(json_values, _DETAILS), st.integers(0, 3).map(str))
+    def test_fuzz_parse_details(self, payload: object, tmdb_id: str) -> None:
+        candidate = resolve_films.parse_details(payload, tmdb_id)
+        if candidate is not None:
+            self.assertEqual(int(candidate.id), int(tmdb_id))
+            self.assertIsInstance(candidate.title, str)
+            self.assertIsInstance(candidate.original_title, str)
+            self.assertTrue(candidate.year is None or isinstance(candidate.year, int))
+
+
 class ParseSearchTest(unittest.TestCase):
     @staticmethod
     def _one(
@@ -128,6 +213,12 @@ class ParseSearchTest(unittest.TestCase):
     def test_a_bool_or_string_id_is_skipped(self) -> None:
         # TMDb ids are integers, and True is an int in Python.
         for tmdb_id in (True, False, "19", 19.0, None, -3):
+            with self.subTest(tmdb_id=tmdb_id):
+                self.assertEqual(self._one(tmdb_id=tmdb_id), ())
+
+    def test_an_id_no_url_may_carry_is_skipped(self) -> None:
+        # credits_url refuses these, so a candidate holding one would end the run.
+        for tmdb_id in (0, 10**10, 10**20):
             with self.subTest(tmdb_id=tmdb_id):
                 self.assertEqual(self._one(tmdb_id=tmdb_id), ())
 
@@ -187,7 +278,7 @@ class ParseSearchTest(unittest.TestCase):
         candidates = resolve_films.parse_search(payload)
         self.assertIsInstance(candidates, tuple)
         for candidate in candidates:
-            self.assertRegex(candidate.id, r"\A[0-9]+\Z")
+            self.assertRegex(candidate.id, r"\A[1-9][0-9]{0,9}\Z")
             self.assertIsInstance(candidate.title, str)
             self.assertIsInstance(candidate.original_title, str)
             self.assertTrue(candidate.year is None or isinstance(candidate.year, int))

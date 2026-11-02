@@ -84,7 +84,7 @@ class ExitCodeTest(CliCase):
         self.main()
         self.assertEqual(
             self.stdout.splitlines(),
-            ["books: 1 files, 1 lines, 0 errors", "films: 3 files, 18 lines, 0 errors"],
+            ["books: 1 file, 1 line, 0 errors", "films: 3 files, 18 lines, 0 errors"],
         )
 
     def test_summary_escapes_a_non_utf8_group_name(self) -> None:
@@ -307,7 +307,7 @@ class SampleTest(unittest.TestCase):
         self._tmp.cleanup()
 
     def test_sample_report_is_reproduced(self) -> None:
-        tree, out = self.base / "hs_tree", self.base / "hs_out"
+        tree, out = self.base / "sample_tree", self.base / "sample_out"
         self.assertEqual(build_sample_tree.main(["--out", str(tree)]), EXIT_OK)
         with contextlib.redirect_stdout(io.StringIO()):
             code = retrolog_survey.main(

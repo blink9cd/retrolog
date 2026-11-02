@@ -1,18 +1,18 @@
 """Aggregator: imports every tests/ suite so one coverage run measures them as one unit.
 
-The floor below is deliberately RESTATED, not derived. A floor computed from discovery
-compares discovery against itself and passes for an empty suite, which is the defect
-this guard exists to catch. What IS derived is the file SET: `_tests_by_module`
-flattens the suite `load_tests` actually folds into the real run into a per-file count,
-and `GroupedSuiteDiscoveryTest.test_grouped_suite_meets_its_own_per_file_floor` checks
-that count's key set against `_MIN_TESTS_BY_FILE`'s -- so a new tests/test_*.py arrives
-unfloored loudly, not silently absorbed into a combined total.
+The floor below is restated, not derived. A floor computed from discovery compares
+discovery against itself and passes for an empty suite, which is the defect this guard
+exists to catch. What is derived is the set of files: `_tests_by_module` flattens the
+suite `load_tests` folds into the real run into a per-file count, and
+`GroupedSuiteDiscoveryTest.test_grouped_suite_meets_its_own_per_file_floor` checks that
+count's key set against `_MIN_TESTS_BY_FILE`'s. A new tests/test_*.py with no floor
+therefore fails the run instead of being absorbed into a combined total.
 
 ``_SUITE_DIR`` is the discovery root for ``_grouped_suite()``, with
 ``top_level_dir=str(_SUITE_DIR)`` so a grouped module's ``__module__`` is its bare
-filename (``test_input``, not ``tests.test_input``). That avoids the mypy "Source file
+filename (``test_review_read``, not ``tests.test_review_read``). That avoids the mypy "Source file
 found twice under different module names" conflict a package-style ``from tests import
-test_input`` import produces the moment ``discover()`` and an explicit import disagree
+test_review_read`` import produces the moment ``discover()`` and an explicit import disagree
 on one file's qualified name.
 """
 
@@ -30,12 +30,15 @@ _SUITE_DIR = _HERE / "tests"
 _MIN_TESTS_BY_FILE: dict[str, int] = {
     # The command line, end to end, with a stand-in page folder.
     "test_review_cli.py": 26,
+    # --append-to: the joining module (review_append), then the command line.
+    "test_review_append.py": 11,
+    "test_review_append_cli.py": 19,
     # The page writer (review_page).
     "test_review_page.py": 12,
     # The picks reader and overrides writer (review_picks).
     "test_review_picks.py": 26,
     # The review reader and the page's data block (review_read).
-    "test_review_read.py": 26,
+    "test_review_read.py": 28,
     # The samples: inputs as they claim, outputs current (samples/README.md).
     "test_review_samples.py": 6,
     # The tool on an interpreter with no installed package.
@@ -99,7 +102,7 @@ class GroupedSuiteDiscoveryTest(unittest.TestCase):
             own_found,
             _OWN_GUARD_TESTS,
             f"this module contributed {own_found} of its own tests, expected exactly "
-            f"{_OWN_GUARD_TESTS} -- a guard above may have been deleted, or a new one "
+            f"{_OWN_GUARD_TESTS}; a guard above may have been deleted, or a new one "
             f"added without raising _OWN_GUARD_TESTS",
         )
         # Derived from the per-file floors rather than restated as a second total: that
@@ -110,13 +113,13 @@ class GroupedSuiteDiscoveryTest(unittest.TestCase):
             grouped_found,
             grouped_floor,
             f"loading this module yielded {grouped_found} grouped tests, expected at "
-            f"least {grouped_floor} -- load_tests may have been removed or renamed, "
+            f"least {grouped_floor}; load_tests may have been removed or renamed, "
             f"silently dropping a tests/ suite from the real run",
         )
 
     def test_grouped_suite_meets_its_own_per_file_floor(self) -> None:
-        """Fail loudly when ONE grouped file has lost tests, and when a new
-        tests/test_*.py arrives with no floor entry in `_MIN_TESTS_BY_FILE` at all.
+        """Fail when one grouped file has lost tests, and when a new tests/test_*.py
+        arrives with no floor entry in `_MIN_TESTS_BY_FILE` at all.
         """
         found_by_file = _tests_by_module(_grouped_suite())
         # The full key set is compared both ways: an unmapped new file (or a mapped
@@ -133,7 +136,7 @@ class GroupedSuiteDiscoveryTest(unittest.TestCase):
                 found,
                 floor,
                 f"tests/{filename} yielded {found} tests, expected at least "
-                f"{floor} -- a test may have been removed from it",
+                f"{floor}; a test may have been removed from it",
             )
 
 

@@ -4,19 +4,21 @@ A sibling of the retrolog tools, run after ``retrolog_resolve``. ``--mode page``
 turns resolve's ``review.json`` into one self-contained page for picking each
 title's work; the page saves the picks as ``picks.json``. ``--mode overrides`` turns
 those picks into an overrides file in the format ``retrolog_resolve`` reads, checked
-by resolve's own loader before it is written.
+by resolve's own loader before it is written; with ``--append-to`` it adds them to an
+overrides file that already exists instead, checking the whole result the same way.
 
-The page's template, stylesheet and scripts are read from ``page/`` beside this file.
-The stages live in ``src/`` beside it; retrolog_resolve's and retrolog_parse's
+The page's template, stylesheet, and scripts are read from ``page/`` beside this
+file. The stages live in ``src/`` beside it; retrolog_resolve's and retrolog_parse's
 ``src/`` supply the overrides check, and retrolog_survey's the atomic writes and the
-git work-tree guard. All are
-put on ``sys.path`` from this file's own location, so the tool can be moved.
+git work-tree guard. All are put on ``sys.path`` from this file's own location, so the
+tool can be moved.
 """
 
 from __future__ import annotations
 
 import argparse
 import os
+import stat
 import sys
 import tempfile
 import textwrap
@@ -44,8 +46,9 @@ SOURCE_DIRS = (
 )
 sys.path[:0] = [str(folder) for folder in SOURCE_DIRS if str(folder) not in sys.path]
 
+from review_append import AppendError, append_overrides  # noqa: E402 - src/ first
 from review_page import DATA_OPENER, PageError, build_page  # noqa: E402 - src/ first
-from review_picks import PicksError, build_overrides  # noqa: E402
+from review_picks import Overrides, PicksError, build_overrides  # noqa: E402
 from review_read import (  # noqa: E402 - after the src/ inserts
     Review,
     ReviewError,
@@ -53,9 +56,13 @@ from review_read import (  # noqa: E402 - after the src/ inserts
     read_review,
 )
 import survey_guard  # noqa: E402 - after the src/ inserts
-from survey_write import describe_error, write_atomic  # noqa: E402
+from survey_write import (  # noqa: E402 - after the src/ inserts
+    describe_error,
+    write_atomic,
+    write_atomic_bytes,
+)
 
-# The folder the page's template, stylesheet and script are read from. A module
+# The folder the page's template, stylesheet, and scripts are read from. A module
 # constant so the tests can put a stand-in folder in its place.
 PAGE_DIR = _HERE / "page"
 _TEMPLATE, _STYLE = "review.html", "review.css"
@@ -66,6 +73,14 @@ _EXIT_OK, _EXIT_REFUSED, _EXIT_USAGE = 0, 1, 2
 _MODES = ("page", "overrides")
 _OUT_EXISTS = "refused --out: it exists, and an overrides file is never overwritten"
 _OUT_FOREIGN = "refused --out: it exists and is not a page this tool wrote"
+# The two output options, as messages name them; build_parser spells them out itself,
+# because cli_doc_consistency reads the parser's option names as literals.
+_OUT, _APPEND_TO = "--out", "--append-to"
+_TARGET_MISSING = "refused --append-to: it does not exist"
+_TARGET_NOT_FILE = "refused --append-to: it is not a regular file"
+_TARGET_CHANGED = (
+    "refused --append-to: it changed during the run, so nothing was written"
+)
 # What marks a page this tool wrote: the data block's opening tag, which build_page
 # puts in every page. An --out holding it may be replaced; any other file is refused.
 PAGE_FINGERPRINT = DATA_OPENER.encode("ascii")
@@ -84,15 +99,17 @@ _PREREQUISITES = (
 _RUN_ORDER = (
     "Run order: after retrolog_resolve. --mode page writes the page; open it, pick "
     "each title's work, and save picks.json with its Save picks file button. --mode "
-    "overrides then writes the overrides file for retrolog_resolve --overrides."
+    "overrides then writes the overrides file for retrolog_resolve --overrides "
+    "(--out), or adds the picks to the one an earlier round wrote (--append-to)."
 )
 _EXIT_CODES = (
-    "Exit codes: 0 written - 1 an input refused (a bad review.json or picks.json, "
+    "Exit codes: 0 means written. 1 means an input was refused (a bad review.json or picks.json, "
     "picks made against another review, an --out that exists in overrides mode or "
-    "is not an earlier page in page mode, or picks whose overrides resolve would "
-    "refuse) - 2 bad arguments, a missing or "
-    "unreadable file, a page template missing a marker, an --out inside a git work "
-    "tree, or the output could not be written."
+    "is not an earlier page in page mode, picks whose overrides resolve would "
+    "refuse, or an --append-to that is missing, not a regular file, fails resolve's "
+    "check alone or with the picks added, or changed during the run). 2 means bad "
+    "arguments, a missing or unreadable file, a page template missing a marker, an "
+    "--out or --append-to inside a git work tree, or the output could not be written."
 )
 _DESCRIPTION = (
     "Turn retrolog_resolve's review.json into a local page for picking each title's "
@@ -120,8 +137,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=_paragraphs(_DESCRIPTION),
         # Shows each default, none on a required option (the stock formatter stamps
-        # "(default: None)" there before CPython 3.13; the floor is 3.12) and none
-        # for --picks, which has no value to show; keeps the epilog's paragraphs.
+        # "(default: None)" there before CPython 3.13; the floor is 3.12), and none
+        # for a None default (--picks, --out, and --append-to), which has no value to
+        # show; keeps the epilog's paragraphs.
         formatter_class=help_formatter.RawNoneHidingFormatter,
         epilog=_paragraphs(_PREREQUISITES, _RUN_ORDER, _EXIT_CODES),
     )
@@ -146,11 +164,19 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--out",
         type=Path,
-        required=True,
         help="The page to write (refused when it exists, unless it is a page this "
         "tool wrote, which is replaced atomically), or the overrides file to write "
-        "(refused when it exists). Refused inside a git work tree: both name "
-        "the operator's titles.",
+        "(refused when it exists). Required in page mode; in overrides mode give it "
+        "or --append-to. Refused inside a git work tree: both name the operator's "
+        "titles.",
+    )
+    parser.add_argument(
+        "--append-to",
+        type=Path,
+        help="Overrides mode only, in place of --out: an overrides file an earlier "
+        "round wrote, to add these picks to. Its text is kept as it is, and it is "
+        "replaced atomically only when resolve accepts the result; an entry repeating "
+        "one already there is refused. Refused inside a git work tree.",
     )
     return parser
 
@@ -161,15 +187,34 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _check_mode(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
-    """Exit 2 through argparse when ``--picks`` is given or missing for the mode."""
-    if args.mode == "overrides" and args.picks is None:
-        parser.error("--mode overrides needs --picks")
-    if args.mode == "page" and args.picks is not None:
+    """Exit 2 through argparse when an option is given or missing for the mode."""
+    if args.mode == "overrides":
+        _check_overrides_options(parser, args)
+        return
+    if args.picks is not None:
         parser.error("--picks is only for --mode overrides")
+    if args.append_to is not None:
+        parser.error("--append-to is only for --mode overrides")
+    if args.out is None:
+        parser.error("--mode page needs --out")
 
 
-def _check_out_folder(out: Path, run_git: survey_guard.GitRunner) -> None:
-    """Exit 2 when ``--out``'s folder lies inside a git work tree.
+def _check_overrides_options(
+    parser: argparse.ArgumentParser, args: argparse.Namespace
+) -> None:
+    """Exit 2 unless overrides mode has --picks and exactly one of its two targets."""
+    if args.picks is None:
+        parser.error("--mode overrides needs --picks")
+    if args.out is None and args.append_to is None:
+        parser.error("--mode overrides needs --out or --append-to")
+    if args.out is not None and args.append_to is not None:
+        parser.error("give --out or --append-to, not both")
+
+
+def _check_out_folder(
+    out: Path, run_git: survey_guard.GitRunner, flag: str = _OUT
+) -> None:
+    """Exit 2 when the folder of ``out`` (given as ``flag``) lies in a git work tree.
 
     Both outputs name the operator's titles, so neither may land where it could be
     committed; retrolog_resolve refuses its own --out the same way, in the same words.
@@ -179,7 +224,7 @@ def _check_out_folder(out: Path, run_git: survey_guard.GitRunner) -> None:
             out.parent, run_git=run_git, timeout=_GIT_TIMEOUT
         )
     except survey_guard.OutRefused as refused:
-        raise _Refused(f"refused --out: {refused}", _EXIT_USAGE) from None
+        raise _Refused(f"refused {flag}: {refused}", _EXIT_USAGE) from None
 
 
 def _read_bytes(path: Path, flag: str) -> bytes:
@@ -236,9 +281,9 @@ def write_new(path: Path, data: bytes) -> None:
         Path(temporary).unlink(missing_ok=True)
 
 
-def _write_failed(error: OSError) -> _Refused:
+def _write_failed(error: OSError, flag: str = _OUT) -> _Refused:
     """The refusal for a failed write, keeping the error's class and reason only."""
-    return _Refused(f"could not write --out: {describe_error(error)}", _EXIT_USAGE)
+    return _Refused(f"could not write {flag}: {describe_error(error)}", _EXIT_USAGE)
 
 
 def _holds_fingerprint(path: Path) -> bool:
@@ -261,13 +306,18 @@ def _holds_fingerprint(path: Path) -> bool:
 def _refuse_foreign(out: Path) -> None:
     """``_Refused`` (exit 1) when ``out`` exists and is not a page this tool wrote.
 
-    A folder, a dangling link or any other non-file is refused as well. A location
-    that cannot be examined or read is the write failure it would become: exit 2.
+    A folder, any link (even to such a page: the atomic replace would swap the link
+    itself for a file) or any other non-file is refused as well. A location that
+    cannot be examined or read is the write failure it would become: exit 2.
     """
     try:
-        if not (out.exists() or out.is_symlink()):
-            return
-        is_page = out.is_file() and _holds_fingerprint(out)
+        mode = out.lstat().st_mode
+    except FileNotFoundError:
+        return
+    except OSError as error:
+        raise _write_failed(error) from None
+    try:
+        is_page = stat.S_ISREG(mode) and _holds_fingerprint(out)
     except OSError as error:
         raise _write_failed(error) from None
     if not is_page:
@@ -320,17 +370,24 @@ def _refuse_existing(out: Path) -> None:
         raise _Refused(_OUT_EXISTS, _EXIT_REFUSED)
 
 
-def _run_overrides(args: argparse.Namespace, run_git: survey_guard.GitRunner) -> str:
-    """Write the overrides file; the summary line, or ``_Refused``."""
-    # First, before anything is read: an existing file is never replaced.
-    _refuse_existing(args.out)
-    _check_out_folder(args.out, run_git)
+def _built(args: argparse.Namespace) -> Overrides:
+    """The overrides the picks write against the review, or ``_Refused``."""
     _, review = _review(args.review)
     picks = _read_bytes(args.picks, "--picks")
     try:
-        built = build_overrides(picks, review)
+        return build_overrides(picks, review)
     except PicksError as error:
         raise _Refused(f"invalid --picks: {error}", _EXIT_REFUSED) from None
+
+
+def _run_overrides(args: argparse.Namespace, run_git: survey_guard.GitRunner) -> str:
+    """Write the overrides file, or append to one; the summary line, or ``_Refused``."""
+    if args.append_to is not None:
+        return _run_append(args, run_git)
+    # First, before anything is read: an existing file is never replaced.
+    _refuse_existing(args.out)
+    _check_out_folder(args.out, run_git)
+    built = _built(args)
     try:
         write_new(args.out, built.toml.encode("utf-8"))
     except FileExistsError:
@@ -340,6 +397,61 @@ def _run_overrides(args: argparse.Namespace, run_git: survey_guard.GitRunner) ->
     return (
         f"{_count(built.written, 'override')} written for "
         f"{_count(built.picked, 'pick')}, {built.kept} kept, {built.undecided} undecided."
+    )
+
+
+def _check_append_target(target: Path) -> None:
+    """``_Refused`` (exit 1) unless ``target`` is an existing regular file.
+
+    A link is refused too: the atomic replace would swap the link itself for a file
+    rather than write to the file it names. A location that cannot be examined is
+    the write failure it would become: exit 2, its class and reason only.
+    """
+    try:
+        mode = target.lstat().st_mode
+    except FileNotFoundError:
+        raise _Refused(_TARGET_MISSING, _EXIT_REFUSED) from None
+    except OSError as error:
+        raise _write_failed(error, _APPEND_TO) from None
+    if not stat.S_ISREG(mode):
+        raise _Refused(_TARGET_NOT_FILE, _EXIT_REFUSED)
+
+
+def _replace_if_unchanged(target: Path, before: bytes, data: bytes) -> None:
+    """Replace ``target`` with ``data`` atomically, unless it no longer holds ``before``.
+
+    The second read narrows the window in which a hand edit made during the run
+    would be lost to the moment between it and the replace; the type check is
+    repeated beside it, since a link put in place meanwhile would be read through.
+    """
+    _check_append_target(target)
+    if _read_bytes(target, _APPEND_TO) != before:
+        raise _Refused(_TARGET_CHANGED, _EXIT_REFUSED)
+    try:
+        write_atomic_bytes(target, data)
+    except OSError as error:
+        raise _write_failed(error, _APPEND_TO) from None
+
+
+def _run_append(args: argparse.Namespace, run_git: survey_guard.GitRunner) -> str:
+    """Add the picks' overrides to ``--append-to``; the summary line, or ``_Refused``."""
+    target: Path = args.append_to
+    # First, before anything is read: only an existing regular file is added to.
+    _check_append_target(target)
+    _check_out_folder(target, run_git, _APPEND_TO)
+    built = _built(args)
+    existing = _read_bytes(target, _APPEND_TO)
+    try:
+        appended = append_overrides(existing, built.tables)
+    except AppendError as error:
+        raise _Refused(f"refused --append-to: {error}", _EXIT_REFUSED) from None
+    # Picks that are all keeps add nothing, and the file is left alone.
+    if built.tables:
+        _replace_if_unchanged(target, existing, appended.data)
+    return (
+        f"{_count(built.written, 'override')} appended for "
+        f"{_count(built.picked, 'pick')}, {built.kept} kept, {built.undecided} "
+        f"undecided; the file now holds {_count(appended.held, 'override')}."
     )
 
 

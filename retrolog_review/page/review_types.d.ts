@@ -1,8 +1,8 @@
-// The shapes review.js works with, for the type checker only: none of it is inlined into the page.
-// review.js is a classic script, so these are global declarations (this file
-// has no import or export) and its JSDoc names them directly. They mirror the
-// data block and picks.json; retrolog_review's Python half
-// writes the first and reads the second.
+// The shapes the page scripts work with, for the type checker only: none of it
+// is inlined into the page. The scripts are classic, so these are global
+// declarations (this file has no import or export) and their JSDoc names them
+// directly. They mirror the data block and picks.json; retrolog_review's Python
+// half writes the first and reads the second.
 
 /** One candidate title, as review.json lists it. */
 interface Candidate {
@@ -75,6 +75,12 @@ interface RetrologStorageApi {
   ): { text: string | null; ok: boolean };
   saveAnswers(storage: Storage | null, sha: string, answers: Answers): boolean;
   forgetAnswers(storage: Storage | null, sha: string): boolean;
+  isAnswer(value: unknown): boolean;
+  isPlainObject(value: unknown): boolean;
+  loadAnswers(
+    storage: Storage | null,
+    sha: string,
+  ): { answers: Answers; ok: boolean };
 }
 
 /** Set by review_storage.js, which the page inlines ahead of review.js. */

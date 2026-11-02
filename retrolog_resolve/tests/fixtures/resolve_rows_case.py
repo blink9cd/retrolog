@@ -54,7 +54,7 @@ def kinds(entries: Sequence[ReviewEntry]) -> list[tuple[str, str]]:
 class RowsCase(unittest.TestCase):
     """Runs ``resolve_all`` against a fetch answering ``pages``, with no cache.
 
-    ``research`` defaults to on, as the command line's ``--research`` does.
+    ``research`` defaults to on and ``vote_floor`` to 1, as the command line's do.
     """
 
     def run_all(
@@ -66,6 +66,7 @@ class RowsCase(unittest.TestCase):
         default: object = None,
         directors: Directors = "none",
         vote_ratio: float = 10.0,
+        vote_floor: int = 1,
         research: bool = True,
         tmdb: resolve_http.Service | None = None,
         cache: Path | None = None,
@@ -84,6 +85,7 @@ class RowsCase(unittest.TestCase):
             tmdb=resolve_http.tmdb(HTTP_TOKEN) if tmdb is None else tmdb,
             directors=directors,
             vote_ratio=vote_ratio,
+            vote_floor=vote_floor,
             research=research,
         )
 

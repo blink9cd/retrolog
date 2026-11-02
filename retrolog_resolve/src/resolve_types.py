@@ -24,10 +24,12 @@ RunMedium = Literal["book", "film", "all"]
 Status = Literal["resolved", "override", "ambiguous", "not-found", "failed"]
 # Which films get their directors looked up (--directors).
 Directors = Literal["none", "ambiguous", "all"]
-# Which rule resolved a title: the exact-title rule, the most-votes rule, a
-# title variant or a second search without a leading article. A lookup
-# that did not resolve keeps the default, "exact".
-Basis = Literal["exact", "most-voted", "variant", "re-searched"]
+# Which rule resolved a title: the exact-title rule, the most-votes rule, a title
+# variant, or a second search without a leading article. A lookup that did not resolve
+# keeps the default, "exact", except a film the exact rule would have settled and held
+# for review instead: that one's is HELD_BASIS, which is also its review kind.
+Basis = Literal["exact", "most-voted", "variant", "re-searched", "suspect-exact"]
+HELD_BASIS: Basis = "suspect-exact"
 
 
 @dataclass(frozen=True)
@@ -67,7 +69,7 @@ class Lookup:
     chosen: Candidate | None  # set for "resolved" only
     shown: tuple[Candidate, ...]  # up to three, for "ambiguous"
     detail: str  # path-free; never a URL, a token or a contact
-    basis: Basis = "exact"  # the rule that resolved it; "exact" when it did not
+    basis: Basis = "exact"  # see Basis
 
 
 @dataclass(frozen=True)
@@ -82,6 +84,7 @@ class Services:
     tmdb: Service | None
     directors: Directors
     vote_ratio: float  # the most-votes ratio; 0 turns the most-votes rule off
+    vote_floor: int  # a single exact title under this many votes is held for review
     research: bool  # search a film with no exact title again, unarticled
 
 
@@ -102,7 +105,7 @@ class ResolveOverride:
 
 @dataclass(frozen=True)
 class ReviewEntry:
-    """One item of resolve's review list, covering every row of one title."""
+    """One item of resolve's review list, covering the rows of one lookup or override."""
 
     kind: str  # see resolve_rows.REVIEW_KINDS
     medium: Medium

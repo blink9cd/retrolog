@@ -6,7 +6,7 @@ a running count of the bytes actually produced, and the result is repacked
 uncompressed in memory for python-docx to parse. A package with more members than
 ``MAX_MEMBERS`` is refused before zipfile lists them, and one with a part declaring a
 document type (the vehicle for an entity-expansion bomb or an external-file read) is
-refused before python-docx parses it. Only a part the package declares an image is
+refused before python-docx parses it. Only a part the package declares as an image is
 exempt: Word stores an inserted SVG as one, often with a doctype, and python-docx
 never parses an image as XML. Every refusal is ``BadDocx``, whose message is the
 underlying exception's class name or a fixed reason: never a path, never document text.
@@ -127,9 +127,9 @@ def _declares_doctype(data: bytes) -> bool:
     """Whether `data`, read as XML up to its root's start tag only, declares a doctype.
 
     No part python-docx parses as XML has one, and a crafted one carries the entities
-    behind an expansion bomb or an external-file read. The parser here resolves no entity,
-    loads no DTD and touches no network, and stops at the root, so the declarations
-    are seen but never acted on. Bytes that are not XML (an image, a damaged part)
+    behind an expansion bomb or an external-file read. The parser here resolves no
+    entity, loads no DTD, touches no network, and stops at the root, so the
+    declarations are seen but never acted on. Bytes that are not XML (an image, a damaged part)
     declare nothing; python-docx reports any part it cannot parse itself.
     """
     parser = etree.XMLPullParser(

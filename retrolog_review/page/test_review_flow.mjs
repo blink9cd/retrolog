@@ -120,7 +120,7 @@ test("an invalid typed id shows a message, is not saved, and leaves it undecided
   assert.equal(field.getAttribute("aria-invalid"), "true");
   assert.equal(
     text(entry.querySelector(".field-message")),
-    "Not a TMDb id: type its digits only.",
+    "Not a TMDb id: type 1 to 10 digits with no leading zero.",
   );
   assert.equal(
     stored(storage)["film\u0000Placeholder Film Two\u00002010/seen.txt:4"],

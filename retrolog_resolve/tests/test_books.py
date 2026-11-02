@@ -11,6 +11,7 @@ from hypothesis import strategies as st
 _TESTS = Path(__file__).resolve().parent
 _TOOL = _TESTS.parent
 sys.path.insert(0, str(_TOOL / "src"))
+sys.path.insert(0, str(_TOOL.parent / "retrolog_survey" / "src"))
 sys.path.insert(0, str(_TOOL.parent / "retrolog_parse" / "src"))
 sys.path.insert(0, str(_TESTS / "fixtures"))
 import resolve_books  # noqa: E402

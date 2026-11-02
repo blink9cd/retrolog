@@ -2,8 +2,9 @@
 
 ``build_rows`` joins the earlier stages: each line is parsed (``parse_entries``) and
 dated (``parse_dates``), the rules' term blocks and overrides are checked against the
-lines they name (``parse_rule_checks``), sections are tracked within each file, and progress notes ("half way
-through") are resolved across the whole tree. Pure: it reads nothing but its arguments.
+lines they name (``parse_rule_checks``), sections are tracked within each file, and
+progress notes ("halfway through") are resolved across the whole tree. Pure: it reads
+nothing but its arguments.
 
 Nothing is dropped silently. Every line ends up in exactly one place: a row, a review
 item that names it, or a layout line (blank, divider, heading or section) that carries

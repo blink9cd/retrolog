@@ -7,8 +7,9 @@ and must run on the standard library alone; only the tests import this one.
 from __future__ import annotations
 
 import datetime
+from types import MappingProxyType
 
-from export_types import ResolvedRow
+from export_types import Account, FilmKey, ResolvedRow
 from hypothesis import strategies as st
 from parse_rows import title_key
 
@@ -27,8 +28,8 @@ star_values = st.one_of(
 # Selection
 # ---------------------------------------------------------------------------
 
-# Small pools, so a list of rows meets shared ids, shared titles and shared positions:
-# the films selection groups, holds and orders are made of such collisions. "!!!" has
+# Small pools, so a list of rows meets shared ids, shared titles, and shared positions:
+# the films selection groups, holds, and orders are made of such collisions. "!!!" has
 # no letter or digit, so its title_key is empty.
 _TITLES = ("Metropolis", "Placeholder Film One", "Placeholder Film Two", "!!!")
 _TMDB_IDS = ("1000001", "1000002", "1000003")
@@ -78,3 +79,48 @@ def _tmdb_title_keys(status: str) -> st.SearchStrategy[tuple[str, ...]]:
         return st.just(())
     keys = [key for key in map(title_key, _TITLES) if key]
     return st.lists(st.sampled_from(keys), max_size=2, unique=True).map(tuple)
+
+
+# The film keys an account draws from: _TITLES' keys with and without a year, so an
+# account meets the rows of resolved_rows by every kind of match on_service makes.
+_ACCOUNT_KEYS = st.builds(
+    FilmKey,
+    st.sampled_from([key for key in map(title_key, _TITLES) if key]),
+    st.sampled_from((None, 1927, 1999)),
+)
+
+
+@st.composite
+def accounts(draw: st.DrawFn) -> Account:
+    """An account export's ``Account``, its diary dates in resolved_rows' date range.
+
+    Kept as a real export makes it: every imported film is logged (a tagged diary or
+    review row), every diary date's film is logged too, and every tagged diary
+    entry's date is a diary date and its film imported.
+    """
+    tagged = draw(_dated_keys(max_size=2))
+    imported = draw(st.frozensets(_ACCOUNT_KEYS, max_size=2)).union(*tagged.values())
+    dated = draw(_dated_keys(max_size=4))
+    for date, keys in tagged.items():
+        dated[date] = dated.get(date, frozenset()) | keys
+    logged = draw(st.frozensets(_ACCOUNT_KEYS, max_size=3)).union(
+        imported, *dated.values()
+    )
+    return Account(
+        watched=draw(st.frozensets(_ACCOUNT_KEYS, max_size=3)),
+        logged=logged,
+        imported=imported,
+        diary_dates=MappingProxyType(dated),
+        imported_dates=MappingProxyType(tagged),
+    )
+
+
+def _dated_keys(
+    *, max_size: int
+) -> st.SearchStrategy[dict[datetime.date, frozenset[FilmKey]]]:
+    """Diary entries' keys by Watched Date, in resolved_rows' date range."""
+    return st.dictionaries(
+        st.dates(datetime.date(2010, 1, 1), datetime.date(2010, 1, 9)),
+        st.frozensets(_ACCOUNT_KEYS, min_size=1, max_size=2),
+        max_size=max_size,
+    )

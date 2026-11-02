@@ -15,7 +15,7 @@ from types import MappingProxyType
 _TESTS = Path(__file__).resolve().parent
 _TOOL = _TESTS.parent
 # Inserted last first, so sys.path reads in retrolog_export.SOURCE_DIRS' order with the
-# tool's own src/ ahead of resolve's, parse's and the survey's.
+# tool's own src/ ahead of resolve's, parse's, and the survey's.
 sys.path.insert(0, str(_TOOL.parent / "retrolog_survey" / "src"))
 sys.path.insert(0, str(_TOOL.parent / "retrolog_parse" / "src"))
 sys.path.insert(0, str(_TOOL.parent / "retrolog_resolve" / "src"))
@@ -23,6 +23,8 @@ sys.path.insert(0, str(_TOOL / "src"))
 sys.path.insert(0, str(_TESTS / "fixtures"))
 import export_letterboxd  # noqa: E402 - after the sys.path inserts above
 from export_types import (  # noqa: E402 - after the sys.path inserts above
+    NOTE_DATE_FIELDS,
+    NOTE_FIELDS,
     LetterboxdConfig,
     ResolvedRow,
 )
@@ -258,6 +260,11 @@ class ReviewTest(unittest.TestCase):
             export_letterboxd.review_text(_row(date=None, comment="Fine."), config),
             "Retrolog review. {sic}\n\nFine.",
         )
+
+    def test_the_fields_an_undated_row_lacks_are_note_fields(self) -> None:
+        # A date field the config could never accept would make the undated check
+        # look for a name no note can hold.
+        self.assertLessEqual(NOTE_DATE_FIELDS, NOTE_FIELDS)
 
     def test_the_review_cell_is_the_review_text(self) -> None:
         config = _config(review_note=self._NOTE)

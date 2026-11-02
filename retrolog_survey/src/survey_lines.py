@@ -3,8 +3,8 @@
 A hand-kept list marks its entries in many ways over the years: a glyph from a symbol
 font, a small picture, a colored run, an emoji, or a single letter written before or
 after a title. This module decides which of those marks a line carries. It does no
-I/O: a caller describes each line as a `LineView` -- built from a plain-text line or
-from a word-processor paragraph -- and `classify_line` names its kind.
+I/O: a caller describes each line as a `LineView`, built from a plain-text line or
+from a word-processor paragraph, and `classify_line` names its kind.
 
 The kinds are tried in a fixed order and the first match wins, so a line carrying
 several marks is counted once, under the earliest:

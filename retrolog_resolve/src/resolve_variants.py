@@ -7,9 +7,10 @@ sent or written. So a variant works on the raw title, before ``title_key`` drops
 ampersand and the apostrophe it needs to see, and it need not rewrite to the same
 spelling on both sides: only the normalized keys have to meet.
 
-``VARIANTS`` holds them in the order they are tried, each beside the short phrase a review detail
-names it by ("matched ignoring <name>"). That order is the measured one: the first
-variant under which any candidate matches decides.
+``VARIANTS`` holds them in the order they are tried, each beside the short phrase a
+review detail names it by ("matched ignoring <name>"). The order matters: the first
+variant under which any candidate matches decides, so an earlier variant wins over a
+later one.
 """
 
 from __future__ import annotations

@@ -1,6 +1,6 @@
 # retrolog_resolve review
 
-8 review items, 1 of them errors.
+9 review items, 1 of them an error.
 
 This run resolved film rows only; any book CSV files in this folder are from an earlier run, and this review does not cover them.
 
@@ -15,6 +15,12 @@ This run resolved film rows only; any book CSV files in this folder are from an 
 | Medium | Title | Rows | Detail | Candidates |
 | --- | --- | --- | --- | --- |
 | film | Placeholder Film Two | 2010/seen.txt:10 | 2 exact titles | Placeholder Film Two, 1999, Director Four, 1000004; Placeholder Film Two, 2008, Director Five, 1000005 |
+
+## suspect-exact (1)
+
+| Medium | Title | Rows | Detail | Candidates |
+| --- | --- | --- | --- | --- |
+| film | Placeholder Film Seven | 2010/seen.txt:16 | one exact title, held: no release date; 0 votes, under the floor of 1 | Placeholder Film Seven, Director Ten, 1000016, 0 votes |
 
 ## not-found (1)
 

@@ -1,22 +1,17 @@
 """Tests for the retrolog_review command line: what each mode reads, writes and returns.
 
-Each test runs ``main`` on files in a temporary folder. The page folder is a copy of
-the stand-ins in tests/fixtures, put in place of the real page/ by patching
-``PAGE_DIR``, so these tests do not change when the front end does.
+Each test runs ``main`` through ``review_cli_case.CliCase`` (tests/fixtures), which
+works in a temporary folder with the stand-in page files patched in.
 """
 
 from __future__ import annotations
 
-import contextlib
 import errno
-import io
 import json
 import os
-import shutil
 import sys
-import tempfile
 import unittest
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from pathlib import Path
 from unittest import mock
 
@@ -25,10 +20,20 @@ _TOOL = _TESTS.parent
 sys.path.insert(0, str(_TESTS / "fixtures"))
 sys.path.insert(0, str(_TOOL))
 import retrolog_review  # noqa: E402 - after the sys.path inserts above
+from review_cli_case import (  # noqa: E402 - after the sys.path inserts above
+    EXIT_OK,
+    EXIT_REFUSED,
+    EXIT_USAGE,
+    IN_A_REPO,
+    IN_GIT,
+    PROG,
+    REVIEW_BYTES,
+    CliCase,
+    FakeGit,
+)
 from review_fixtures import (  # noqa: E402 - after the sys.path inserts above
     BOOK_TITLE,
     FILM_TITLE,
-    PAGE_FILES,
     as_bytes,
     book_entry,
     entry,
@@ -36,67 +41,6 @@ from review_fixtures import (  # noqa: E402 - after the sys.path inserts above
     picks,
     review,
 )
-
-EXIT_OK, EXIT_REFUSED, EXIT_USAGE = 0, 1, 2
-# git's exit code outside any repository, and inside a work tree.
-_NOT_A_REPO, _IN_A_REPO = 128, 0
-_IN_GIT = "refused --out: inside a git work tree"
-# Every refusal opens with the program name, which argparse takes from argv[0].
-_PROG = retrolog_review.build_parser().prog
-_REVIEW_BYTES = as_bytes(
-    review([entry("failed", title="Placeholder Film Nine"), entry(), book_entry()])
-)
-
-
-class FakeGit:
-    """Stands in for git: records each call's argv and folder, returns a fixed code."""
-
-    def __init__(self, code: int = _NOT_A_REPO) -> None:
-        self.code = code
-        self.calls: list[tuple[list[str], Path]] = []
-
-    def __call__(self, argv: Sequence[str], cwd: Path, timeout: float) -> int:
-        self.calls.append((list(argv), cwd))
-        return self.code
-
-
-class CliCase(unittest.TestCase):
-    """A temporary folder holding a review, and a stand-in page folder patched in."""
-
-    def setUp(self) -> None:
-        self._tmp = tempfile.TemporaryDirectory()
-        self.base = Path(self._tmp.name)
-        self.page_dir = self.base / "page"
-        self.page_dir.mkdir()
-        for name, source in PAGE_FILES.items():
-            shutil.copyfile(source, self.page_dir / name)
-        patcher = mock.patch.object(retrolog_review, "PAGE_DIR", self.page_dir)
-        patcher.start()
-        self.addCleanup(patcher.stop)
-        self.review = self.base / "review.json"
-        self.review.write_bytes(_REVIEW_BYTES)
-        # Real git is never asked: the temporary folder is outside every work tree,
-        # and a test that wants one inside says so through this stand-in.
-        self.git = FakeGit()
-
-    def tearDown(self) -> None:
-        self._tmp.cleanup()
-
-    def run_main(self, *argv: str) -> tuple[int, str, str]:
-        """``main(argv)``'s exit code, stdout and stderr."""
-        out, err = io.StringIO(), io.StringIO()
-        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
-            try:
-                code = retrolog_review.main(list(argv), run_git=self.git)
-            except SystemExit as exited:
-                code = int(exited.code or 0)
-        return code, out.getvalue(), err.getvalue()
-
-    def assert_private(self, *texts: str) -> None:
-        """No fixture title appears in any of ``texts``."""
-        for text in texts:
-            for title in (FILM_TITLE, BOOK_TITLE, "Placeholder Film Nine"):
-                self.assertNotIn(title, text)
 
 
 class PageModeTest(CliCase):
@@ -152,8 +96,7 @@ class PageModeTest(CliCase):
             (
                 EXIT_REFUSED,
                 "",
-                f"{_PROG}: refused --out: it exists and is not a page this tool "
-                "wrote\n",
+                f"{PROG}: refused --out: it exists and is not a page this tool wrote\n",
             ),
         )
         self.assertEqual(unrelated.read_text(encoding="utf-8"), "someone's notes")
@@ -161,12 +104,12 @@ class PageModeTest(CliCase):
     def test_foreign_out_inside_a_work_tree_is_a_usage_error_unread(self) -> None:
         """The work-tree guard runs first, so the foreign file's bytes are never read."""
         (self.base / "page.html").write_text("notes", encoding="utf-8", newline="\n")
-        self.git = FakeGit(_IN_A_REPO)
+        self.git = FakeGit(IN_A_REPO)
         with mock.patch.object(
             retrolog_review, "_holds_fingerprint", side_effect=AssertionError
         ):
             code, out, err = self.page()
-        self.assertEqual((code, out, err), (EXIT_USAGE, "", f"{_PROG}: {_IN_GIT}\n"))
+        self.assertEqual((code, out, err), (EXIT_USAGE, "", f"{PROG}: {IN_GIT}\n"))
 
     def test_foreign_file_appearing_while_the_page_is_built_is_kept(self) -> None:
         """The check is repeated just before the write, after the page is built."""
@@ -193,22 +136,47 @@ class PageModeTest(CliCase):
         self.assertEqual(self.page()[0], EXIT_REFUSED)
         self.assertTrue(out.is_symlink())
 
-    def test_page_out_that_cannot_be_examined_is_a_usage_error(self) -> None:
-        out, exists = self.base / "page.html", Path.exists
+    def test_out_that_is_a_link_to_a_page_is_refused_and_kept(self) -> None:
+        """The atomic replace would swap the link itself for a file."""
+        self.assertEqual(self.page()[0], EXIT_OK)
+        out, real = self.base / "page.html", self.base / "real.html"
+        out.rename(real)
+        before = real.read_bytes()
+        out.symlink_to(real)
+        code, _, err = self.page()
+        self.assertEqual(code, EXIT_REFUSED)
+        self.assertIn("refused --out", err)
+        self.assertTrue(out.is_symlink())
+        self.assertEqual(real.read_bytes(), before)
 
-        def denied_for_out(path: Path) -> bool:
+    def test_page_out_that_cannot_be_examined_is_a_usage_error(self) -> None:
+        out, lstat = self.base / "page.html", Path.lstat
+
+        def denied_for_out(path: Path) -> os.stat_result:
             # Only --out is unexaminable, so the work-tree guard before it still runs.
             if path == out:
                 raise PermissionError(errno.EACCES, "denied")
-            return exists(path)
+            return lstat(path)
 
         with mock.patch.object(
-            Path, "exists", autospec=True, side_effect=denied_for_out
+            Path, "lstat", autospec=True, side_effect=denied_for_out
         ):
             code, _, err = self.page()
         self.assertEqual(code, EXIT_USAGE)
         self.assertEqual(
-            err, f"{_PROG}: could not write --out: PermissionError: denied\n"
+            err, f"{PROG}: could not write --out: PermissionError: denied\n"
+        )
+
+    def test_page_out_that_cannot_be_read_is_a_usage_error(self) -> None:
+        (self.base / "page.html").write_text("notes", encoding="utf-8", newline="\n")
+        denied = PermissionError(errno.EACCES, "denied")
+        with mock.patch.object(
+            retrolog_review, "_holds_fingerprint", side_effect=denied
+        ):
+            code, _, err = self.page()
+        self.assertEqual(code, EXIT_USAGE)
+        self.assertEqual(
+            err, f"{PROG}: could not write --out: PermissionError: denied\n"
         )
 
     def test_bad_review_is_refused(self) -> None:
@@ -216,7 +184,7 @@ class PageModeTest(CliCase):
         code, out, err = self.page()
         self.assertEqual((code, out), (EXIT_REFUSED, ""))
         self.assertEqual(
-            err, f"{_PROG}: invalid --review: entries[0].kind: must be a review kind\n"
+            err, f"{PROG}: invalid --review: entries[0].kind: must be a review kind\n"
         )
         self.assertFalse((self.base / "page.html").exists())
 
@@ -224,7 +192,7 @@ class PageModeTest(CliCase):
         self.review.unlink()
         code, _, err = self.page()
         self.assertEqual(code, EXIT_USAGE)
-        self.assertEqual(err, f"{_PROG}: could not read --review: FileNotFoundError\n")
+        self.assertEqual(err, f"{PROG}: could not read --review: FileNotFoundError\n")
 
     def test_template_missing_a_marker_is_a_usage_error(self) -> None:
         template = self.page_dir / "review.html"
@@ -237,7 +205,7 @@ class PageModeTest(CliCase):
         self.assertEqual(code, EXIT_USAGE)
         self.assertEqual(
             err,
-            f"{_PROG}: the page template: the template must hold the "
+            f"{PROG}: the page template: the template must hold the "
             "script tag line exactly once\n",
         )
 
@@ -247,14 +215,14 @@ class PageModeTest(CliCase):
         self.assertEqual(code, EXIT_USAGE)
         self.assertEqual(
             err,
-            f"{_PROG}: could not read the page file review.css: FileNotFoundError\n",
+            f"{PROG}: could not read the page file review.css: FileNotFoundError\n",
         )
         (self.page_dir / "review.css").write_bytes(b"\xff")
         code, _, err = self.page()
         self.assertEqual(code, EXIT_USAGE)
         self.assertEqual(
             err,
-            f"{_PROG}: could not read the page file review.css: UnicodeDecodeError\n",
+            f"{PROG}: could not read the page file review.css: UnicodeDecodeError\n",
         )
 
     def test_unwritable_out_is_a_usage_error(self) -> None:
@@ -263,12 +231,12 @@ class PageModeTest(CliCase):
             "--mode", "page", "--review", str(self.review), "--out", out
         )
         self.assertEqual(code, EXIT_USAGE)
-        self.assertTrue(err.startswith(f"{_PROG}: could not write --out: "))
+        self.assertTrue(err.startswith(f"{PROG}: could not write --out: "))
 
     def test_out_inside_a_git_work_tree_is_refused(self) -> None:
-        self.git = FakeGit(_IN_A_REPO)
+        self.git = FakeGit(IN_A_REPO)
         code, out, err = self.page()
-        self.assertEqual((code, out, err), (EXIT_USAGE, "", f"{_PROG}: {_IN_GIT}\n"))
+        self.assertEqual((code, out, err), (EXIT_USAGE, "", f"{PROG}: {IN_GIT}\n"))
         self.assertFalse((self.base / "page.html").exists())
         # git is asked about the folder the page goes into.
         self.assertEqual(
@@ -279,7 +247,7 @@ class PageModeTest(CliCase):
     def test_out_under_a_git_folder_is_refused_when_git_says_no(self) -> None:
         (self.base / ".git").mkdir()
         code, _, err = self.page()
-        self.assertEqual((code, err), (EXIT_USAGE, f"{_PROG}: {_IN_GIT}\n"))
+        self.assertEqual((code, err), (EXIT_USAGE, f"{PROG}: {IN_GIT}\n"))
 
     def test_picks_with_page_mode_is_a_usage_error(self) -> None:
         code, _, err = self.page("--picks", str(self.review))
@@ -298,7 +266,7 @@ class OverridesModeTest(CliCase):
         self.out = self.base / "overrides.toml"
         self.write_picks([pick({"tmdb_id": "1000003"})])
 
-    def write_picks(self, items: list[object], data: bytes = _REVIEW_BYTES) -> None:
+    def write_picks(self, items: list[object], data: bytes = REVIEW_BYTES) -> None:
         """Write a picks file holding ``items``, keyed to ``data``."""
         self.picks.write_bytes(as_bytes(picks(data, items)))
 
@@ -343,9 +311,9 @@ class OverridesModeTest(CliCase):
         )
 
     def test_out_inside_a_git_work_tree_is_refused(self) -> None:
-        self.git = FakeGit(_IN_A_REPO)
+        self.git = FakeGit(IN_A_REPO)
         code, out, err = self.overrides()
-        self.assertEqual((code, out, err), (EXIT_USAGE, "", f"{_PROG}: {_IN_GIT}\n"))
+        self.assertEqual((code, out, err), (EXIT_USAGE, "", f"{PROG}: {IN_GIT}\n"))
         self.assertFalse(self.out.exists())
 
     def test_out_that_cannot_be_examined_is_a_usage_error(self) -> None:
@@ -355,7 +323,7 @@ class OverridesModeTest(CliCase):
         self.assertEqual((code, out), (EXIT_USAGE, ""))
         self.assertEqual(
             err,
-            f"{_PROG}: could not write --out: PermissionError: "
+            f"{PROG}: could not write --out: PermissionError: "
             f"{os.strerror(errno.EACCES)}\n",
         )
         self.assertEqual(list(self.base.glob(".*")), [])  # no temporary file left
@@ -367,7 +335,7 @@ class OverridesModeTest(CliCase):
         self.assertEqual(code, EXIT_REFUSED)
         self.assertEqual(
             err,
-            f"{_PROG}: refused --out: it exists, and an overrides file "
+            f"{PROG}: refused --out: it exists, and an overrides file "
             "is never overwritten\n",
         )
         self.assertEqual(self.out.read_text(encoding="utf-8"), "kept")
@@ -396,7 +364,7 @@ class OverridesModeTest(CliCase):
         self.out = self.base / "absent" / "overrides.toml"
         code, _, err = self.overrides()
         self.assertEqual(code, EXIT_USAGE)
-        self.assertTrue(err.startswith(f"{_PROG}: could not write --out: "))
+        self.assertTrue(err.startswith(f"{PROG}: could not write --out: "))
 
     def test_digest_mismatch_is_refused(self) -> None:
         self.write_picks([], data=b"another review")
@@ -404,7 +372,7 @@ class OverridesModeTest(CliCase):
         self.assertEqual(code, EXIT_REFUSED)
         self.assertEqual(
             err,
-            f"{_PROG}: invalid --picks: review_sha256: the picks were "
+            f"{PROG}: invalid --picks: review_sha256: the picks were "
             "made against another review file\n",
         )
         self.assertFalse(self.out.exists())
@@ -415,8 +383,8 @@ class OverridesModeTest(CliCase):
         self.assertEqual(code, EXIT_REFUSED)
         self.assertEqual(
             err,
-            f"{_PROG}: invalid --picks: picks[0].answer.tmdb_id: must "
-            "be a string of digits\n",
+            f"{PROG}: invalid --picks: picks[0].answer.tmdb_id: must "
+            "be a string of 1 to 10 digits with no leading zero\n",
         )
 
     def test_bad_review_is_refused(self) -> None:
@@ -429,7 +397,7 @@ class OverridesModeTest(CliCase):
         self.picks.unlink()
         code, _, err = self.overrides()
         self.assertEqual(code, EXIT_USAGE)
-        self.assertEqual(err, f"{_PROG}: could not read --picks: FileNotFoundError\n")
+        self.assertEqual(err, f"{PROG}: could not read --picks: FileNotFoundError\n")
 
     def test_overrides_mode_needs_picks(self) -> None:
         code, _, err = self.run_main(

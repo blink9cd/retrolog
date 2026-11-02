@@ -11,13 +11,13 @@ confirm the real behavior in one command rather than trusting a test summary.
 When the environment variables `GC_CHILD_PID_FILE` and `GC_GRANDCHILD_PID_FILE` name two files, it
 also records its own pid in the first and its grandchild's in the second, so a live test can
 confirm both are gone and kill a survivor itself: neither process exits for an hour. The live
-tests set them through `live_pid_guard`. The runs below set neither, so they record
-nothing. The pid files travel in the environment rather than as arguments because a tool
-under test may launch this fixture as its own subprocess and append flags of its own.
+tests set them through the `live_pid_guard` helper. The runs below set neither, so they record
+nothing. The pid files travel in the environment rather than as arguments because a tool under
+test may launch this fixture as its own subprocess and append flags of its own.
 
-Every command below is run from the repository root.
+Every command below is run from the folder that holds `bounded_run/`.
 
-## The fixed path: it returns just after its bound
+## The fixed path: returns just after its bound
 
 ```bash
 python -c "import sys; sys.path.insert(0, 'bounded_run'); import bounded_run, subprocess, time; t=time.monotonic();
@@ -43,13 +43,13 @@ pgrep -fl gc_child.py || echo 'no survivor'
 
 Expected: `killed`, then `no survivor`. Three seconds is only for a person to wait by; on a loaded
 machine the nested pair may not have started yet, in which case there was nothing to test, so
-run it again. Before the kill walked nested sessions, `pgrep` listed a surviving `gc_child.py`
-here, and its grandchild survived beside it unnamed: a bare `python -c` loop, which that pattern
-does not match. Both had to be killed by hand.
+run it again. A kill of the outer group alone leaves a surviving `gc_child.py` in that `pgrep`
+listing, with its grandchild beside it unnamed: a bare `python -c` loop, which that pattern does
+not match. Both then need killing by hand.
 
-## The unfixed path, for contrast: be ready to interrupt it
+## The unfixed path: for contrast, and be ready to interrupt it
 
-The same call through the stdlib does **not** come back. Measured on Windows: still running after
+The same call through the stdlib does not come back. Measured on Windows: still running after
 five minutes against the same 3.0s bound. Interrupt it yourself; nothing else will.
 
 ```bash
@@ -60,7 +60,7 @@ except subprocess.TimeoutExpired: print('returned after %.2fs' % (time.monotonic
 
 ## Cleaning up after the unfixed run
 
-Interrupting the parent does not reap the grandchild; that is the whole defect. Both processes
+Interrupting the parent does not reap the grandchild: that is the whole defect. Both processes
 end on their own after an hour (`_LIFETIME_SECONDS` in `gc_child.py`), so a forgotten pair cannot
 run for good, but there is no need to wait: list the survivors, then end each one by its pid. On
 macOS or Linux, `gc_child` matches both, because the grandchild's one-line program carries a

@@ -1,7 +1,8 @@
 """Read resolve's CSV files back as rows, with the fields export needs parsed out.
 
 ``read_resolved`` reads each ``<medium>-<year>.csv`` and ``<medium>-undated.csv``
-directly in the resolve output folder, in name order, and ignores every other file
+directly in the resolve output folder, the names ``parse_output.CSV_NAME`` matches
+(resolve keeps parse's), in year order, and ignores every other file
 there (``review.json``, ``review.md``, the cache folder) and every CSV of another
 medium, so a resolve folder holding older book CSVs beside fresh film ones is read
 correctly: the book files are never opened. Every cell export uses is checked, and a
@@ -15,7 +16,6 @@ from __future__ import annotations
 
 import csv
 import datetime
-import re
 import typing
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -24,22 +24,26 @@ from typing import Literal
 
 from export_titles import match_keys
 from export_types import ResolvedRow
-from parse_output import COLUMNS, UNDATED
+from parse_output import COLUMNS, CSV_NAME, UNDATED, year_order
 from parse_rows import title_key
-from resolve_columns import DATE_CELL, LINE_CELL, RESOLVE_COLUMNS, YEAR_CELL
+from resolve_columns import (
+    DATE_CELL,
+    LINE_CELL,
+    RESOLVE_COLUMNS,
+    YEAR_CELL,
+    is_tmdb_id,
+)
 from resolve_types import Status
 
 # Every column of a resolve CSV, in order: parse's, then the ones resolve adds.
 INPUT_COLUMNS = COLUMNS + RESOLVE_COLUMNS
-CSV_NAME = re.compile(r"^(book|film)-([0-9]{4}|undated)\.csv$", re.ASCII)
-# The tmdb_id cell: ASCII digits, kept as text and never passed to int(). The year,
-# date and line cells take resolve_columns' bounded shapes, which resolve's own reader
-# of parse's CSVs checks too.
-_DIGITS = re.compile(r"[0-9]+")
+# The tmdb_id cell takes resolve_columns' is_tmdb_id, the rule resolve writes it by,
+# and stays text, never passed to int(). The year, date, and line cells take
+# resolve_columns' bounded shapes, which resolve's own reader of parse's CSVs checks.
 _BOOLEANS: Mapping[str, bool] = {"true": True, "false": False}
 _STATUSES = frozenset(typing.get_args(Status))
-# The columns holding a resolved film's TMDb titles; resolve fills them only
-# beside a tmdb_id.
+# The columns holding a film's TMDb titles (a resolved or an override film's);
+# resolve fills them only beside a tmdb_id.
 _TMDB_TITLES = ("tmdb_title", "tmdb_original_title")
 
 
@@ -85,7 +89,7 @@ def _date(where: str, text: str, file_year: str) -> datetime.date | None:
 def _checked_cells(where: str, cells: Mapping[str, str], csv_file: _CsvFile) -> None:
     """Refuse a cell export reads that holds what resolve would not write.
 
-    The medium, line, status, rewatch, tmdb_id and TMDb title cells are checked.
+    The medium, line, status, rewatch, tmdb_id, and TMDb title cells are checked.
     """
     if cells["medium"] != csv_file.medium:
         raise InputError(f"{where}: medium differs from the file name's")
@@ -95,8 +99,10 @@ def _checked_cells(where: str, cells: Mapping[str, str], csv_file: _CsvFile) -> 
         raise InputError(f"{where}: resolve_status is not one of resolve's")
     if cells["rewatch"] not in _BOOLEANS:
         raise InputError(f"{where}: rewatch must be true or false")
-    if cells["tmdb_id"] and not _DIGITS.fullmatch(cells["tmdb_id"]):
-        raise InputError(f"{where}: tmdb_id must be empty or digits")
+    if cells["tmdb_id"] and not is_tmdb_id(cells["tmdb_id"]):
+        raise InputError(
+            f"{where}: tmdb_id must be empty or 1 to 10 digits with no leading zero"
+        )
     for column in _TMDB_TITLES:
         if cells[column] and not cells["tmdb_id"]:
             raise InputError(f"{where}: {column} must be empty with no tmdb_id")
@@ -141,7 +147,7 @@ def _read_csv(path: Path, csv_file: _CsvFile) -> list[ResolvedRow]:
     """Every record of one CSV file, its header first checked against INPUT_COLUMNS.
 
     Its twin is resolve_input's ``_read_csv``, as ``_csv_files`` and ``_year`` are:
-    each reader checks another header, builds another row and raises its own
+    each reader checks another header, builds another row, and raises its own
     ``InputError``, so only the cell shapes in resolve_columns are shared.
 
     ``reader.line_num`` is the physical line a record ends on, the header being line
@@ -168,7 +174,7 @@ def _read_csv(path: Path, csv_file: _CsvFile) -> list[ResolvedRow]:
 
 
 def _csv_files(resolved: Path, medium: str) -> list[_CsvFile]:
-    """The ``medium`` CSV_NAME files directly in ``resolved``, in name order.
+    """The ``medium`` CSV_NAME files directly in ``resolved``, in year order.
 
     Every other entry is ignored, the other medium's CSVs included, so a damaged one
     of those cannot stop a run that does not read it. A folder that cannot be listed
@@ -182,17 +188,17 @@ def _csv_files(resolved: Path, medium: str) -> list[_CsvFile]:
                 found.append(_CsvFile(entry.name, medium, match.group(2)))
     except OSError:
         raise InputError("--resolved: cannot be read") from None
-    return sorted(found, key=lambda csv_file: csv_file.name)
+    return sorted(found, key=lambda each: year_order(each.year))
 
 
 def read_resolved(resolved: Path, medium: Literal["film"]) -> tuple[ResolvedRow, ...]:
-    """Every row of every ``medium`` CSV in ``resolved``, files in name order.
+    """Every row of every ``medium`` CSV in ``resolved``, files in year order.
 
-    Raises ``InputError`` when ``resolved`` is not a folder, cannot be listed or holds
-    no ``medium`` CSV, or when a file is unreadable, not UTF-8, not valid CSV, has a
-    header other than ``INPUT_COLUMNS`` (an older resolve's included), or holds a
-    medium, year, date, line, status, rewatch, tmdb_id or TMDb title cell resolve
-    does not write.
+    Raises ``InputError`` when ``resolved`` is not a folder, cannot be listed, or
+    holds no ``medium`` CSV, or when a file is unreadable, not UTF-8, not valid CSV,
+    has a header other than ``INPUT_COLUMNS`` (an older resolve's included), or
+    holds a medium, year, date, line, status, rewatch, tmdb_id, or TMDb title cell
+    resolve does not write.
     """
     if not resolved.is_dir():
         raise InputError("--resolved: no such folder")

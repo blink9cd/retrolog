@@ -1,4 +1,4 @@
-"""Tests for export_select: the cutoff, the held films, the account diff and the order."""
+"""Tests for export_select: the cutoff, the holds, the account diff, and the order."""
 
 from __future__ import annotations
 
@@ -18,8 +18,11 @@ sys.path[:0] = [
     str(_TOOL),
 ]
 import export_account  # noqa: E402 - after the sys.path inserts above
+import export_cutoff  # noqa: E402 - after the sys.path inserts above
+import export_formula  # noqa: E402 - after the sys.path inserts above
 import export_select  # noqa: E402 - after the sys.path inserts above
 from export_types import (  # noqa: E402 - after the sys.path inserts above
+    Account,
     Cutoff,
     FilmKey,
     ReviewEntry,
@@ -43,7 +46,11 @@ class KindsTest(unittest.TestCase):
                 "held-failed",
                 "held-split",
                 "held-no-title",
+                "omitted",
                 "on-service",
+                "same-date",
+                "logged-no-stars",
+                "watched-only",
                 "override-unchecked",
                 "by-title",
                 "unrated",
@@ -93,7 +100,7 @@ class CutoffTest(unittest.TestCase):
 
     def test_cutoff_naming_another_title_is_an_error_and_cuts_nothing(self) -> None:
         cutoff = Cutoff("10/seen.txt", 2, "placeholder film one")
-        with self.assertRaises(export_select.CutoffError) as caught:
+        with self.assertRaises(export_cutoff.CutoffError) as caught:
             _select(self.rows, cutoff=cutoff)
         message = str(caught.exception)
         self.assertIn("letterboxd.cutoff", message)
@@ -101,12 +108,12 @@ class CutoffTest(unittest.TestCase):
         self.assertNotIn("placeholder", message)
 
     def test_cutoff_naming_no_row_is_an_error(self) -> None:
-        with self.assertRaises(export_select.CutoffError):
+        with self.assertRaises(export_cutoff.CutoffError):
             _select(self.rows, cutoff=Cutoff("10/seen.txt", 99, "metropolis"))
 
     def test_cutoff_naming_an_undated_row_is_an_error(self) -> None:
         cutoff = Cutoff("undated/seen.txt", 4, "placeholder film one")
-        with self.assertRaises(export_select.CutoffError):
+        with self.assertRaises(export_cutoff.CutoffError):
             _select(self.rows, cutoff=cutoff)
 
     def test_no_cutoff_cuts_nothing(self) -> None:
@@ -212,8 +219,9 @@ class HoldTest(unittest.TestCase):
         chosen = export_select.select(
             rows,
             cutoff=None,
-            account=frozenset(),
+            account=Account(),
             on_service=export_account.on_service,
+            watched_dates=True,
         )
         self.assertEqual(chosen.films, ())
         self.assertEqual(
@@ -275,17 +283,30 @@ class AccountTest(unittest.TestCase):
         self.assertIn("no year", entry.detail)
 
     def test_on_service_is_asked_with_the_film_key_and_account(self) -> None:
+        # Each account file's films in turn: the import's, the logged, the watched.
         asked: list[tuple[FilmKey, frozenset[FilmKey]]] = []
-        account = frozenset({FilmKey("other", 2001)})
+        account = Account(
+            watched=frozenset({FilmKey("watched", 2001)}),
+            logged=frozenset({FilmKey("logged", 2001)}),
+            imported=frozenset({FilmKey("imported", 2001)}),
+        )
 
         def record(key: FilmKey, given_account: frozenset[FilmKey]) -> bool:
             asked.append((key, given_account))
             return False
 
         export_select.select(
-            [_row(year=None)], cutoff=None, account=account, on_service=record
+            [_row(year=None)],
+            cutoff=None,
+            account=account,
+            on_service=record,
+            watched_dates=True,
         )
-        self.assertEqual(asked, [(FilmKey("placeholder film one", None), account)])
+        key = FilmKey("placeholder film one", None)
+        self.assertEqual(
+            asked,
+            [(key, account.imported), (key, account.logged), (key, account.watched)],
+        )
 
 
 class SentTest(unittest.TestCase):
@@ -336,7 +357,7 @@ class FormulaCellTest(unittest.TestCase):
         rows = tuple(_row(source_line=line) for line in range(1, len(cells) + 1))
         film = export_select.Film("tmdb:1000001", rows)
         checked = {name: at for at, name in enumerate(self._COLUMNS)}
-        return export_select.formula_entries([film], [list(cells)], checked)
+        return export_formula.formula_entries([film], [list(cells)], checked)
 
     def test_each_formula_start_is_listed(self) -> None:
         for start in ("=", "+", "-", "@", "\t", "\r"):

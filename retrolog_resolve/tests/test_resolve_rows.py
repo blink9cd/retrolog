@@ -47,6 +47,12 @@ from resolve_rows_case import (  # noqa: E402 - after the sys.path inserts above
 )
 from resolve_types import InputRow  # noqa: E402 - after the sys.path inserts above
 
+# TMDb's details for the override ids these tests name: an override row asks for them.
+_DETAILS = {
+    resolve_films.details_url(tmdb_id): tmdb_result(int(tmdb_id), "Metropolis")
+    for tmdb_id in ("8", "9")
+}
+
 
 class VocabularyTest(unittest.TestCase):
     def test_error_kinds_lead_the_reviewkinds(self) -> None:
@@ -72,11 +78,14 @@ class LineOverrideTest(RowsCase):
 
     _FILM = 'medium = "film"\ntitle = "Metropolis"\nfile = "10/seen.txt"\nline = 7\n'
 
-    def test_a_line_override_is_applied_with_no_request(self) -> None:
+    def test_a_line_override_is_applied_with_no_search(self) -> None:
         row = input_row("Metropolis", medium="film", source_file="10/seen.txt", line=7)
-        rows, review = self.run_all([row], overrides_of(self._FILM + 'tmdb_id = "9"'))
+        rows, review = self.run_all(
+            [row], overrides_of(self._FILM + 'tmdb_id = "9"'), _DETAILS
+        )
         self.assertEqual(self.status(rows[0]), ("override", "", "", "9"))
-        self.assertEqual(self.fetch.calls, [])
+        # Only its id's details are asked for (test_resolve_override_details).
+        self.assertEqual(self.fetch.calls, [resolve_films.details_url("9")])
         self.assertEqual(kinds(review), [("override-applied", "Metropolis")])
         self.assertEqual(review[0].rows, ("10/seen.txt:7",))
         self.assertFalse(review[0].error)
@@ -109,7 +118,7 @@ class LineOverrideTest(RowsCase):
             input_row(title, medium="film", source_file="10/seen.txt", line=7)
             for title in ("Other Film", "Metropolis")
         ]
-        pages = {resolve_films.search_url("Other Film"): EMPTY_TMDB}
+        pages = {resolve_films.search_url("Other Film"): EMPTY_TMDB, **_DETAILS}
         out, review = self.run_all(
             rows, overrides_of(self._FILM + 'tmdb_id = "9"'), pages
         )
@@ -130,7 +139,7 @@ class LineOverrideTest(RowsCase):
             self._FILM + 'tmdb_id = "9"',
             'medium = "film"\ntitle = "Metropolis"\ntmdb_id = "8"',
         )
-        out, review = self.run_all(rows, overrides)
+        out, review = self.run_all(rows, overrides, _DETAILS)
         self.assertEqual([r.cells["tmdb_id"] for r in out], ["9", "8"])
         self.assertEqual(
             [(e.kind, e.rows) for e in review],
@@ -168,7 +177,7 @@ class GroupingTest(RowsCase):
             input_row("Some Film", medium="film", date="2012-01-01", line=2),
         ]
         found = tmdb_search_payload(
-            tmdb_result(5, "Some Film", release_date="2011-05-05")
+            tmdb_result(5, "Some Film", release_date="2011-05-05", vote_count=40)
         )
         with tempfile.TemporaryDirectory() as cache:
             out, _ = self.run_all(
@@ -240,7 +249,7 @@ class TitleOverrideTest(RowsCase):
 
 
 class UnusedOverrideTest(RowsCase):
-    """Rule 5: an override that settled no row is an error."""
+    """Rule 6: an override that settled no row is an error."""
 
     def test_a_title_override_with_no_row_is_unused(self) -> None:
         overrides = overrides_of('medium = "film"\ntitle = "Gone Film"\ntmdb_id = "3"')
@@ -260,7 +269,7 @@ class UnusedOverrideTest(RowsCase):
             LineOverrideTest._FILM + 'tmdb_id = "9"',
             'medium = "film"\ntitle = "Metropolis"\ntmdb_id = "8"',
         )
-        _, review = self.run_all([row], overrides)
+        _, review = self.run_all([row], overrides, _DETAILS)
         self.assertEqual(
             [entry.kind for entry in review], ["override-applied", "override-unused"]
         )
@@ -281,7 +290,13 @@ class TmdbTitleTest(RowsCase):
 
     def test_a_resolved_film_carries_both_tmdb_titles(self) -> None:
         url = resolve_films.search_url("Metropolis")
-        found = tmdb_result(19, "Metropolis", original_title="Metropolis (Original)")
+        found = tmdb_result(
+            19,
+            "Metropolis",
+            original_title="Metropolis (Original)",
+            release_date="1927-01-10",
+            vote_count=2500,
+        )
         pages = {url: tmdb_search_payload(found)}
         out, _ = self.run_all([input_row("Metropolis", medium="film")], pages=pages)
         self.assertEqual(
@@ -298,12 +313,14 @@ class TmdbTitleTest(RowsCase):
             self.tmdb_titles(out[0]), ("Placeholder Story 2", "Placeholder Story 2")
         )
 
-    def test_an_override_leaves_both_empty(self) -> None:
+    def test_an_override_carries_its_ids_details_titles(self) -> None:
+        # The override's tmdb_id is asked for its details, and the titles come
+        # from them; test_resolve_override_details covers the request itself.
         override = 'medium = "film"\ntitle = "Metropolis"\ntmdb_id = "9"'
         row = input_row("Metropolis", medium="film")
-        out, _ = self.run_all([row], overrides_of(override))
+        out, _ = self.run_all([row], overrides_of(override), _DETAILS)
         self.assertEqual(self.status(out[0]), ("override", "", "", "9"))
-        self.assertEqual(self.tmdb_titles(out[0]), ("", ""))
+        self.assertEqual(self.tmdb_titles(out[0]), ("Metropolis", "Metropolis"))
 
     def test_an_unresolved_film_leaves_both_empty(self) -> None:
         pages = {resolve_films.search_url("Metropolis"): EMPTY_TMDB}

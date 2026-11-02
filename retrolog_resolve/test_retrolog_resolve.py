@@ -1,11 +1,11 @@
 """Aggregator: imports every tests/ suite so one coverage run measures them as one unit.
 
-The floor below is deliberately RESTATED, not derived. A floor computed from discovery
+The floor below is deliberately restated, not derived. A floor computed from discovery
 compares discovery against itself and passes for an empty suite, which is the defect
-this guard exists to catch. What IS derived is the file SET: `_tests_by_module`
+this guard exists to catch. What is derived is the file set: `_tests_by_module`
 flattens the suite `load_tests` actually folds into the real run into a per-file count,
 and `GroupedSuiteDiscoveryTest.test_grouped_suite_meets_its_own_per_file_floor` checks
-that count's key set against `_MIN_TESTS_BY_FILE`'s -- so a new tests/test_*.py arrives
+that count's key set against `_MIN_TESTS_BY_FILE`'s, so a new tests/test_*.py arrives
 unfloored loudly, not silently absorbed into a combined total.
 
 ``_SUITE_DIR`` is the discovery root for ``_grouped_suite()``, with
@@ -28,12 +28,16 @@ _SUITE_DIR = _HERE / "tests"
 # Restated, not derived (see module docstring): a floor computed from discovery would
 # compare discovery against itself and pass for an empty suite.
 _MIN_TESTS_BY_FILE: dict[str, int] = {
+    # The command line's value checks (resolve_args).
+    "test_args.py": 5,
     "test_books.py": 27,
+    # The shared TMDb id rule and creator joiner (resolve_columns).
+    "test_columns.py": 4,
     # Every environment variable the tools read is declared in the project config.
     "test_env_declared.py": 3,
-    "test_films.py": 23,
+    "test_films.py": 31,
     # The HTTP layer (resolve_http).
-    "test_http.py": 37,
+    "test_http.py": 38,
     "test_http_status.py": 15,
     "test_input.py": 26,
     "test_isbn.py": 13,
@@ -51,6 +55,8 @@ _MIN_TESTS_BY_FILE: dict[str, int] = {
     # --medium: one medium per run, and its film-only sample.
     "test_resolve_medium.py": 13,
     "test_resolve_rows.py": 22,
+    # An override row's TMDb details request (rule 5).
+    "test_resolve_override_details.py": 15,
     # The tool and its sample builder on an interpreter with no installed package.
     "test_stdlib_only.py": 2,
     # The token file (resolve_token), then where the command line takes its token from.
@@ -60,6 +66,8 @@ _MIN_TESTS_BY_FILE: dict[str, int] = {
     # The most-voted and variant matches wired through rows, output and CLI.
     "test_resolve_loosened.py": 16,
     "test_resolve_vote_ratio.py": 10,
+    # A suspicious single exact title held for review (suspect-exact, --vote-floor).
+    "test_resolve_suspect.py": 32,
     # The re-search without a leading article: its pure decision, then as resolve_all sends it.
     "test_resolve_research.py": 28,
 }
@@ -100,7 +108,7 @@ def _tests_by_module(suite: unittest.TestSuite) -> dict[str, int]:
 
 
 class GroupedSuiteDiscoveryTest(unittest.TestCase):
-    """Fail loudly when THIS MODULE's real test load is missing a grouped suite --
+    """Fail loudly when this module's real test load is missing a grouped suite,
     not merely when `tests/`, read directly off disk, is missing one.
 
     A guard that called `_grouped_suite()` directly would share its subject's failure
@@ -121,7 +129,7 @@ class GroupedSuiteDiscoveryTest(unittest.TestCase):
             own_found,
             _OWN_GUARD_TESTS,
             f"this module contributed {own_found} of its own tests, expected exactly "
-            f"{_OWN_GUARD_TESTS} -- a guard above may have been deleted, or a new one "
+            f"{_OWN_GUARD_TESTS}; a guard above may have been deleted, or a new one "
             f"added without raising _OWN_GUARD_TESTS",
         )
         # Derived from the per-file floors rather than restated as a second total: that
@@ -132,12 +140,12 @@ class GroupedSuiteDiscoveryTest(unittest.TestCase):
             grouped_found,
             grouped_floor,
             f"loading this module yielded {grouped_found} grouped tests, expected at "
-            f"least {grouped_floor} -- load_tests may have been removed or renamed, "
+            f"least {grouped_floor}; load_tests may have been removed or renamed, "
             f"silently dropping a tests/ suite from the real run",
         )
 
     def test_grouped_suite_meets_its_own_per_file_floor(self) -> None:
-        """Fail loudly when ONE grouped file has lost tests, and when a new
+        """Fail loudly when one grouped file has lost tests, and when a new
         tests/test_*.py arrives with no floor entry in `_MIN_TESTS_BY_FILE` at all.
         """
         found_by_file = _tests_by_module(_grouped_suite())
@@ -155,7 +163,7 @@ class GroupedSuiteDiscoveryTest(unittest.TestCase):
                 found,
                 floor,
                 f"tests/{filename} yielded {found} tests, expected at least "
-                f"{floor} -- a test may have been removed from it",
+                f"{floor}; a test may have been removed from it",
             )
 
 

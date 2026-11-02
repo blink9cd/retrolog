@@ -1,12 +1,15 @@
 """Load and check the operator's export config, and check it covers the rows' ratings.
 
-The file is ``schema = 1`` plus one table per service; this round reads
+The file is ``schema = 1`` plus one table per service; the tool reads
 ``[letterboxd]`` only. That table holds ``watched_date``, ``tags``,
-``review_note`` and ``review_note_rows``, a ``ratings`` table mapping each rating
-key to stars, and optionally ``rating_tags``, ``rating_names`` and
-``review_note_rating``, and ``cutoff``, whose ``title`` is kept as parse's
-``title_key`` so spacing, case, and punctuation do not matter. Every tag, in ``tags``
-and ``rating_tags`` alike, must start with ``retrolog``.
+``review_note``, ``review_note_rows``, and a ``ratings`` table mapping each rating
+key to stars. It may also hold ``rating_tags``, ``rating_names``,
+``review_note_rating``, ``cutoff`` (whose ``title`` is kept as parse's
+``title_key``, so spacing, case, and punctuation do not matter), and ``omit``, a
+list of films never sent, each a ``title`` kept the same way and an optional
+``year``. Every tag, in ``tags`` and ``rating_tags`` alike, must start with
+``export_types.IMPORT_TAG_PREFIX``, and ``tags`` must hold at least one, so every
+row carries the tag a rerun finds an earlier import by.
 
 The value checks are parse's ``parse_checks`` helpers where one fits, so a refusal
 reads the way a rules-file refusal does: it names the TOML key
@@ -22,7 +25,19 @@ from collections.abc import Mapping, Sequence
 from types import MappingProxyType
 
 import parse_checks as checks
-from export_types import Cutoff, ExportConfig, LetterboxdConfig, ResolvedRow
+from export_types import (
+    IMPORT_TAG_PREFIX,
+    MAX_HALF_STARS,
+    MIN_HALF_STARS,
+    NOTE_FIELDS,
+    SENTENCE_FIELDS,
+    Cutoff,
+    ExportConfig,
+    LetterboxdConfig,
+    OmitEntry,
+    ResolvedRow,
+    template_names_any,
+)
 from parse_checks import RulesError
 from parse_rows import title_key
 
@@ -36,33 +51,32 @@ _LETTERBOXD_KEYS = _LETTERBOXD_REQUIRED | {
     "rating_names",
     "review_note_rating",
     "cutoff",
+    "omit",
 }
 _CUTOFF_KEYS = frozenset({"file", "line", "title"})
-# Stars run 0.5 to 5 in halves, kept doubled as whole numbers 1 to 10.
-_MIN_HALF_STARS, _MAX_HALF_STARS = 1, 10
+_OMIT_KEYS = frozenset({"title", "year"})
 _STARS_MESSAGE = "must be stars from 0.5 to 5 in halves"
 # A Letterboxd tag: the importer splits Tags on commas, so a tag holds none, nor a
 # quote or a control character that could change how the cell reads back.
 _MAX_TAG_LENGTH = 50
 _TAG_FORBIDDEN = frozenset(",\"'")
 _TAG_MESSAGE = (
-    f"a tag must be 1 to {_MAX_TAG_LENGTH} characters with no comma, quote or "
-    "control character"
+    f"a tag must be 1 to {_MAX_TAG_LENGTH} characters with no comma, quote, "
+    "or control character"
 )
-# Every tag starts with this, so none collides with a tag the account already
-# uses and the import's tagged entries can be found from its tag pages. Case counts:
-# Letterboxd keeps a tag as written.
-_TAG_PREFIX = "retrolog"
-_PREFIX_MESSAGE = f"a tag must start with {_TAG_PREFIX}"
-# The review note: only the watch's year and date may be filled in.
-_NOTE_FIELDS = frozenset({"year", "date"})
+# Every tag starts with IMPORT_TAG_PREFIX, so none collides with a tag the account
+# already uses, the import's tagged entries can be found from its tag pages, and the
+# next run's account read knows them. Case counts: Letterboxd keeps a tag as written.
+_PREFIX_MESSAGE = f"a tag must start with {IMPORT_TAG_PREFIX}"
+# A rerun finds an earlier import only by its tag, so every row must carry one.
+_NO_TAGS_MESSAGE = "must hold at least one tag"
+# The review note: only the watch's year and date (NOTE_FIELDS) may be filled in.
 _MAX_NOTE_LENGTH = 500
 _NOTE_MESSAGE = (
     "may hold only the placeholders {year} and {date}, and at most "
     f"{_MAX_NOTE_LENGTH} characters"
 )
-# The rating sentence: only the rating key's word may be filled in.
-_SENTENCE_FIELDS = frozenset({"rating"})
+# The rating sentence: only the rating key's word (SENTENCE_FIELDS) may be filled in.
 _SENTENCE_MESSAGE = (
     f"may hold only the placeholder {{rating}}, and at most {_MAX_NOTE_LENGTH} "
     "characters"
@@ -98,7 +112,7 @@ def _half_stars(where: str, value: object) -> int:
         raise ConfigError(f"{where}: {_STARS_MESSAGE}")
     doubled = value * 2
     # NaN fails the range test, so int() below never meets it or an infinity.
-    if not _MIN_HALF_STARS <= doubled <= _MAX_HALF_STARS or doubled != int(doubled):
+    if not MIN_HALF_STARS <= doubled <= MAX_HALF_STARS or doubled != int(doubled):
         raise ConfigError(f"{where}: {_STARS_MESSAGE}")
     return int(doubled)
 
@@ -114,7 +128,7 @@ def _ratings(where: str, value: object) -> Mapping[str, int]:
 
 
 def _tag(where: str, value: object) -> str:
-    """One tag: a short string starting with ``_TAG_PREFIX``.
+    """One tag: a short string starting with ``IMPORT_TAG_PREFIX``.
 
     It holds no comma, quote, or control character.
     """
@@ -126,15 +140,17 @@ def _tag(where: str, value: object) -> str:
         or any(unicodedata.category(char) == "Cc" for char in value)
     ):
         raise ConfigError(f"{where}: {_TAG_MESSAGE}")
-    if not value.startswith(_TAG_PREFIX):
+    if not value.startswith(IMPORT_TAG_PREFIX):
         raise ConfigError(f"{where}: {_PREFIX_MESSAGE}")
     return value
 
 
 def _tags(where: str, value: object) -> tuple[str, ...]:
-    """The ``tags`` list, every item a tag."""
+    """The ``tags`` list: at least one item, every item a tag."""
     if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
         raise ConfigError(f"{where}: must be a list of strings")
+    if not value:
+        raise ConfigError(f"{where}: {_NO_TAGS_MESSAGE}")
     return tuple(_tag(where, item) for item in value)
 
 
@@ -195,9 +211,7 @@ def _names_every_key(
     where: str, sentence: str, names: Mapping[str, str], ratings: Mapping[str, int]
 ) -> None:
     """Refuse a ``{rating}`` sentence while a rating key has no word to print."""
-    if not any(
-        name == "rating" for _, name, _, _ in string_module.Formatter().parse(sentence)
-    ):
+    if not template_names_any(sentence, SENTENCE_FIELDS):
         return
     for key in ratings:
         if key not in names:
@@ -208,7 +222,7 @@ def _names_every_key(
 
 
 def _cutoff(where: str, value: object) -> Cutoff:
-    """The optional ``cutoff`` table: a source file, line and that line's title."""
+    """The optional ``cutoff`` table: a source file, a line, and that line's title."""
     table = _keyed(where, value, _CUTOFF_KEYS, _CUTOFF_KEYS)
     key = title_key(checks.string(f"{where}.title", table["title"]))
     if not key:
@@ -218,6 +232,41 @@ def _cutoff(where: str, value: object) -> Cutoff:
         line=checks.integer(f"{where}.line", table["line"], 1, checks.NO_LIMIT),
         title_key=key,
     )
+
+
+def _omit_entry(where: str, value: object) -> OmitEntry:
+    """One ``omit`` entry: a ``title`` with a letter or digit, and an optional year."""
+    table = _keyed(where, value, _OMIT_KEYS, frozenset({"title"}))
+    key = title_key(checks.string(f"{where}.title", table["title"]))
+    if not key:
+        raise ConfigError(f"{where}.title: has no letter or digit to match a row by")
+    year = table.get("year")
+    return OmitEntry(
+        title_key=key,
+        year=None
+        if year is None
+        else checks.integer(f"{where}.year", year, 1, checks.NO_LIMIT),
+    )
+
+
+def _omit(where: str, value: object) -> tuple[OmitEntry, ...]:
+    """The optional ``omit`` list: its entries in order, numbered from 1, no film twice.
+
+    The number is the entry's place in the file, so a refusal names it without
+    quoting the operator's title.
+    """
+    if not isinstance(value, list):
+        raise ConfigError(f"{where}: must be a list of tables")
+    entries: list[OmitEntry] = []
+    for number, item in enumerate(value, start=1):
+        entry = _omit_entry(f"{where}[{number}]", item)
+        if entry in entries:
+            first = entries.index(entry) + 1
+            raise ConfigError(
+                f"{where}[{number}]: names the same film as {where}[{first}]"
+            )
+        entries.append(entry)
+    return tuple(entries)
 
 
 def _letterboxd(value: object) -> LetterboxdConfig:
@@ -236,7 +285,7 @@ def _letterboxd(value: object) -> LetterboxdConfig:
     sentence = _template(
         f"{where}.review_note_rating",
         table.get("review_note_rating", ""),
-        _SENTENCE_FIELDS,
+        SENTENCE_FIELDS,
         _SENTENCE_MESSAGE,
     )
     _names_every_key(where, sentence, names, ratings)
@@ -248,7 +297,7 @@ def _letterboxd(value: object) -> LetterboxdConfig:
         tags=_tags(f"{where}.tags", table["tags"]),
         watched_date=table["watched_date"],
         review_note=_template(
-            f"{where}.review_note", table["review_note"], _NOTE_FIELDS, _NOTE_MESSAGE
+            f"{where}.review_note", table["review_note"], NOTE_FIELDS, _NOTE_MESSAGE
         ),
         review_note_rows="all" if rows == "all" else "commented",
         cutoff=_cutoff(f"{where}.cutoff", table["cutoff"])
@@ -256,6 +305,7 @@ def _letterboxd(value: object) -> LetterboxdConfig:
         else None,
         rating_names=names,
         review_note_rating=sentence,
+        omit=_omit(f"{where}.omit", table.get("omit", [])),
     )
 
 
@@ -301,3 +351,15 @@ def check_keys(config: LetterboxdConfig, rows: Sequence[ResolvedRow]) -> None:
                 f"letterboxd.ratings.{row.rating_raw}: missing, and a row is rated "
                 "with it"
             )
+
+
+def check_omit(config: LetterboxdConfig, rows: Sequence[ResolvedRow]) -> None:
+    """Refuse, by its number, the first ``omit`` entry that names none of ``rows``.
+
+    ``rows`` is every row read, the cutoff's included, so a moved cutoff never makes
+    an entry stale; an entry naming nothing is a typo or a film gone from the lists,
+    and would otherwise leave out nothing while the operator thinks it does.
+    """
+    for number, entry in enumerate(config.omit, start=1):
+        if not any(entry.names(row) for row in rows):
+            raise ConfigError(f"letterboxd.omit[{number}]: matches no row")

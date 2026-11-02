@@ -59,7 +59,7 @@ _PAGES: Mapping[str, object] = {
         ol_work(key="/works/OL7W", title="Moby Dick", editions=(ol_edition(_ISBN),))
     ),
     _FILM_URL: tmdb_search_payload(
-        tmdb_result(19, "Metropolis", release_date="1927-01-10")
+        tmdb_result(19, "Metropolis", release_date="1927-01-10", vote_count=2500)
     ),
 }
 _BOOK_CSV = csv_text([parse_row(title="Moby Dick")])
@@ -222,9 +222,13 @@ class CleanRunTest(_CliCase):
         overrides = self.overrides(
             'medium = "film"\ntitle = "Metropolis"\ntmdb_id = "8"'
         )
+        details = resolve_films.details_url("8")
+        self.fetch = Answering(
+            {**_PAGES, details: tmdb_result(8, "Metropolis", original_title="M")}
+        )
         self.assertEqual(self.main("--overrides", overrides), EXIT_OK, self.stderr)
-        self.assertIn(",override,,,8,,\n", self.read("film-2010.csv"))
-        self.assertEqual(self.fetch.calls, [_BOOK_URL])
+        self.assertIn(",override,,,8,Metropolis,M\n", self.read("film-2010.csv"))
+        self.assertEqual(self.fetch.calls, [_BOOK_URL, details])
 
     def test_directors_default_to_ambiguous(self) -> None:
         both = (tmdb_result(1, "Metropolis"), tmdb_result(2, "Metropolis"))

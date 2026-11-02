@@ -12,7 +12,7 @@
 #   isbn13 = "..."       a book's ISBN-13, or an ISBN-10 (converted); check digit verified
 #   ol_work = "..."      a book's Open Library work key, /works/OL<digits>W
 #                        (a book may give isbn13 and ol_work together)
-#   tmdb_id = "..."      a film's TMDb id, digits only
+#   tmdb_id = "..."      a film's TMDb id: 1 to 10 digits, no leading zero
 #   unresolvable = true  no id: the title is exported alone
 #
 # An unknown key, a missing one, or an id the medium cannot take stops the run before

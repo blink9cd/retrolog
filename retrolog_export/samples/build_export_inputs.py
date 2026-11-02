@@ -1,14 +1,17 @@
-"""Write the synthetic resolve folder, account export and config export's sample uses.
+"""Write the synthetic resolve folder, account export, and config of export's sample.
 
 Every title is a placeholder (``Placeholder Film One``, or ``???`` for a title with no
-letter), every director's name is a placeholder too, and every id is made up, so the
-sample holds no real list and no real account, and no real film is paired with an id
-that is not its own. ``--out DIR`` receives:
+letter or digit), every director's name is a placeholder too, and every id is made up,
+so the sample holds no real list and no real account, and no real film is paired
+with an id that is not its own. ``--out DIR`` receives:
 
 - ``DIR/resolved/``: three film CSV files in resolve's columns, one of them undated,
   holding every resolve status;
-- ``DIR/account/``: an unpacked account export whose ``watched.csv`` names one of the
-  films, so it is not sent;
+- ``DIR/account/``: an unpacked account export, as invented as the rest, whose
+  ``watched.csv``, ``diary.csv``, and ``ratings.csv`` put one film in each of three
+  account classes: one only watched, sent in full; one the owner logged, sent
+  without stars, less its row on its diary entry's date; and one an earlier import
+  tagged ``retrolog``, not sent;
 - ``DIR/export.toml``: ``export.example.toml`` beside this file, unchanged. Its cutoff
   names one of the rows, so it and the row after it are cut.
 
@@ -33,7 +36,7 @@ sys.path.append(str(Path(__file__).resolve().parents[2] / "retrolog_bootstrap"))
 import retrolog_bootstrap  # noqa: E402 - after the sys.path append above
 
 retrolog_bootstrap.add_shared("stdio_utf8", "help_formatter")
-# Then the tool's own modules, resolve's, parse's and the survey's, and the test
+# Then the tool's own modules, resolve's, parse's, and the survey's, then the test
 # fixture builders.
 sys.path[:0] = [
     str(_TOOL / "src"),
@@ -91,7 +94,7 @@ _FILES: Mapping[str, list[dict[str, str]]] = {
             tmdb_id="1000001",
         ),
         # resolved, a split rating sharing another key's stars, and two directors
-        # joined by commas.
+        # joined by a comma.
         _row(
             "Placeholder Film One",
             _SEEN,
@@ -128,7 +131,7 @@ _FILES: Mapping[str, list[dict[str, str]]] = {
             rating_raw="a",
             resolve_status="failed",
         ),
-        # resolved, but already on the account: not sent.
+        # resolved, and on the account as watched only: sent in full, with its stars.
         _row(
             "Placeholder Film Five",
             _SEEN,
@@ -148,8 +151,8 @@ _FILES: Mapping[str, list[dict[str, str]]] = {
             rating_raw="a",
             resolve_status="override",
         ),
-        # One title split between a tmdbID film and a title-only film: both held, an
-        # error, until an override settles the second.
+        # One title split between a tmdbID film and a title-only film: both held, as
+        # errors, until an override settles the second.
         _row(
             "Placeholder Film Eight",
             _SEEN,
@@ -170,6 +173,28 @@ _FILES: Mapping[str, list[dict[str, str]]] = {
         # a title with no letter or digit: no account entry could match it, so it is
         # held, an error.
         _row("???", _SEEN, 17, date="2010-09-10", resolve_status="not-found"),
+        # logged by the owner on the account, untagged, with a diary entry on this
+        # date: this row is not sent (same-date), and the film's other row, in
+        # film-2019.csv, is sent without stars.
+        _row(
+            "Placeholder Film Twelve",
+            _SEEN,
+            18,
+            date="2010-10-11",
+            year="1974",
+            rating_raw="c",
+            tmdb_id="1000012",
+        ),
+        # imported before: its diary entry carries the "retrolog" tag, so not sent.
+        _row(
+            "Placeholder Film Thirteen",
+            _SEEN,
+            19,
+            date="2010-10-11",
+            year="1988",
+            rating_raw="b",
+            tmdb_id="1000013",
+        ),
     ],
     "film-2019.csv": [
         # Placeholder Film Eleven again, a rewatch before the cutoff: a second row of
@@ -185,6 +210,20 @@ _FILES: Mapping[str, list[dict[str, str]]] = {
             rewatch="true",
             resolve_status="override",
             tmdb_id="1000001",
+        ),
+        # Placeholder Film Twelve again: sent, but with an empty Rating, since the
+        # owner rated it on the account. Its rating tag and the review's rating
+        # sentence still say what the lists did.
+        _row(
+            "Placeholder Film Twelve",
+            _LATER,
+            5,
+            date="2019-03-04",
+            year="1974",
+            rating_raw="c",
+            comment="Better the second time.",
+            rewatch="true",
+            tmdb_id="1000012",
         ),
         # The row the example config's cutoff names: cut, with every row after it.
         _row(
@@ -221,16 +260,34 @@ _FILES: Mapping[str, list[dict[str, str]]] = {
         ),
     ],
 }
-# The films the account already holds, as Letterboxd's watched.csv names them.
-_ACCOUNT = [("Placeholder Film Five", "1995")]
+# The account export's files: watched.csv names every film the account holds,
+# ratings.csv the two the owner rated, and diary.csv one entry the owner logged and
+# one an earlier import tagged.
+_WATCHED = [
+    ("Placeholder Film Five", "1995"),
+    ("Placeholder Film Twelve", "1974"),
+    ("Placeholder Film Thirteen", "1988"),
+]
+_RATED = [("Placeholder Film Twelve", "1974"), ("Placeholder Film Thirteen", "1988")]
+_DIARY = [
+    ("Placeholder Film Twelve", "1974", "", "2010-10-11"),
+    ("Placeholder Film Thirteen", "1988", "retrolog, retrolog-mid", "2010-10-11"),
+]
 
 
 def write_inputs(out: Path) -> None:
-    """Write ``resolved/``, ``account/`` and ``export.toml`` under ``out``."""
+    """Write ``resolved/``, ``account/``, and ``export.toml`` under ``out``."""
     fx.write_resolved(
         out / "resolved", {name: fx.csv_text(rows) for name, rows in _FILES.items()}
     )
-    fx.write_account_folder(out / "account", {"watched.csv": fx.account_csv(_ACCOUNT)})
+    fx.write_account_folder(
+        out / "account",
+        {
+            "watched.csv": fx.account_csv(_WATCHED),
+            "diary.csv": fx.logged_csv(_DIARY),
+            "ratings.csv": fx.account_csv(_RATED),
+        },
+    )
     shutil.copyfile(_HERE / "export.example.toml", out / "export.toml")
 
 

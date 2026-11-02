@@ -2,12 +2,11 @@
 
 ``build_overrides`` reads ``picks.json``'s bytes against the checked review: the
 digest must be the review's, each pick must name one decidable entry by its medium,
-title and rows together, no entry may be picked twice, and each answer must be one of
+title, and rows together, no entry may be picked twice, and each answer must be one of
 the page's (``"keep"``, a ``tmdb_id``, an ``ol_work`` and/or ``isbn13``, or
 ``unresolvable``). Every pick other than keep becomes one line override per row its
-entry lists, naming the row's ``file`` and ``line``: a title-only
-override would also move the title's rows resolve settled on its own, which the review
-never showed. The tables are rendered as TOML and then checked by retrolog_resolve's
+entry lists, naming the row's ``file`` and ``line``: a title-only override would also
+move the title's rows resolve settled on its own, which the review never showed. The tables are rendered as TOML and then checked by retrolog_resolve's
 own ``load_overrides``, so a file this module returns is one resolve accepts.
 
 A refusal names the pick's index and key (``picks[3].answer.tmdb_id``) and never
@@ -24,7 +23,9 @@ from resolve_isbn import isbn13_or_none
 from resolve_overrides import OverridesError, load_overrides
 from review_read import (
     OL_WORK,
+    OL_WORK_SHAPE,
     TMDB_ID,
+    TMDB_ID_SHAPE,
     NotJson,
     Review,
     Scope,
@@ -95,6 +96,7 @@ class Overrides:
     """The overrides file to write, and what the picks came to."""
 
     toml: str
+    tables: tuple[str, ...]  # the [[overrides]] tables alone, for appending elsewhere
     written: int  # [[overrides]] tables written, one per row of each picked entry
     picked: int  # picks that wrote overrides (any answer but keep)
     kept: int  # picks left on keep
@@ -144,9 +146,7 @@ def _id_value(where: str, key: str, value: object) -> str | bool:
             )
         return value
     pattern, shape = (
-        (TMDB_ID, "a string of digits")
-        if key == "tmdb_id"
-        else (OL_WORK, "a string /works/OL<digits>W")
+        (TMDB_ID, TMDB_ID_SHAPE) if key == "tmdb_id" else (OL_WORK, OL_WORK_SHAPE)
     )
     if not isinstance(value, str) or not pattern.fullmatch(value):
         raise PicksError(f"{where}: must be {shape}")
@@ -201,7 +201,7 @@ def _picks(values: Sequence[object], decidable: frozenset[Scope]) -> tuple[Pick,
             raise PicksError(f"{where}: names no decidable entry in the review")
         if scope in seen:
             raise PicksError(
-                f"{where}: a second pick for the entry picks[{seen[scope]}] names"
+                f"{where}: a second pick for the entry that picks[{seen[scope]}] names"
             )
         seen[scope] = index
         medium, title, rows = scope
@@ -307,6 +307,7 @@ def build_overrides(data: bytes, review: Review) -> Overrides:
     picked = sum(1 for pick in picks if pick.answer is not None)
     return Overrides(
         toml=toml,
+        tables=tuple(tables),
         written=len(tables),
         picked=picked,
         kept=len(picks) - picked,

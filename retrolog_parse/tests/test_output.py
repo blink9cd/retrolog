@@ -161,6 +161,71 @@ class CsvFilesTest(unittest.TestCase):
         self.assertEqual(list(csv.reader(io.StringIO(text, newline="")))[1][1], title)
 
 
+class CsvNameTest(unittest.TestCase):
+    # The reader pattern resolve and export read parse's output by: it must take
+    # every name csv_name writes, a year of any width included.
+    def test_the_pattern_is_the_published_one(self) -> None:
+        self.assertEqual(
+            parse_output.CSV_NAME.pattern, r"(book|film)-(\d+|undated)\.csv"
+        )
+
+    def test_a_short_year_and_an_undated_row_match(self) -> None:
+        # dates.century = 100 dates a row in year 100, a three-digit name.
+        for dated, groups in (
+            (date(100, 1, 1), ("film", "100")),
+            (None, ("film", "undated")),
+        ):
+            match = parse_output.CSV_NAME.fullmatch(
+                parse_output.csv_name(row(date=dated))
+            )
+            assert match is not None
+            self.assertEqual(match.groups(), groups)
+
+    def test_no_other_name_matches(self) -> None:
+        for name in ("film-2031.txt", "song-2031.csv", "film-.csv", "film-٣.csv"):
+            self.assertIsNone(parse_output.CSV_NAME.fullmatch(name))
+
+    @given(
+        st.sampled_from(["book", "film"]),
+        st.one_of(st.none(), st.dates()),
+    )
+    def test_every_written_name_matches(self, medium: str, dated: date | None) -> None:
+        name = parse_output.csv_name(row(medium=medium, date=dated))
+        match = parse_output.CSV_NAME.fullmatch(name)
+        assert match is not None
+        year = parse_output.UNDATED if dated is None else str(dated.year)
+        self.assertEqual(match.groups(), (medium, year))
+
+
+class YearOrderTest(unittest.TestCase):
+    # The one key resolve and export sort parse's file names by: the names' year
+    # part is unpadded, so ordering it as text would put 150 after 1499.
+    def test_a_shorter_year_is_the_earlier_and_undated_is_last(self) -> None:
+        years = ["undated", "2010", "1499", "150", "999", "1000"]
+        self.assertEqual(
+            sorted(years, key=parse_output.year_order),
+            ["150", "999", "1000", "1499", "2010", "undated"],
+        )
+
+    def test_the_key_is_undated_then_width_then_text(self) -> None:
+        self.assertEqual(parse_output.year_order("150"), (False, 3, "150"))
+        self.assertEqual(
+            parse_output.year_order(parse_output.UNDATED), (True, 0, "undated")
+        )
+
+    @given(st.dates(), st.dates())
+    def test_it_orders_written_names_as_their_years(self, a: date, b: date) -> None:
+        def year_of(dated: date) -> str:
+            match = parse_output.CSV_NAME.fullmatch(
+                parse_output.csv_name(row(date=dated))
+            )
+            assert match is not None
+            return match.group(2)
+
+        first, second = (parse_output.year_order(year_of(d)) for d in (a, b))
+        self.assertEqual(first < second, a.year < b.year)
+
+
 class ReviewCountsTest(unittest.TestCase):
     def test_every_kind_counted_in_order(self) -> None:
         counts = parse_output.review_counts([item("unrated"), item("unrated")])
@@ -223,7 +288,7 @@ class ReviewMarkdownTest(unittest.TestCase):
         text = self.render([item("read-error"), item("unrated"), item("unrated")])
         lines = text.splitlines()
         self.assertEqual(lines[0], "# retrolog_parse review")
-        self.assertEqual(lines[2], "3 review items, 1 of them errors.")
+        self.assertEqual(lines[2], "3 review items, 1 of them an error.")
 
     def test_one_table_per_kind_in_kind_order(self) -> None:
         text = self.render(
@@ -269,6 +334,19 @@ class ReviewMarkdownTest(unittest.TestCase):
         text = self.render([])
         self.assertEqual(
             text, "# retrolog_parse review\n\n0 review items, 0 of them errors.\n"
+        )
+
+    def test_one_item_is_singular(self) -> None:
+        text = self.render([item("unrated")])
+        self.assertEqual(text.splitlines()[2], "1 review item, 0 of them errors.")
+
+    def test_the_count_line_is_public(self) -> None:
+        # resolve prints the same count line, so it imports this one.
+        self.assertEqual(
+            parse_output.count_line(1, 1), "1 review item, 1 of them an error."
+        )
+        self.assertEqual(
+            parse_output.count_line(2, 0), "2 review items, 0 of them errors."
         )
 
     def test_ends_with_one_newline(self) -> None:

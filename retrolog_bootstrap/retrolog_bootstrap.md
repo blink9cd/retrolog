@@ -1,8 +1,8 @@
 # retrolog_bootstrap
 
 The one place the retrolog tools learn where their shared libraries live. Each tool,
-sample builder, source module and test that imports `stdio_utf8`, `help_formatter`,
-`bounded_run` or `bounded_fetch` reaches this folder by one fixed step from its own
+sample builder, source module, and test that imports `stdio_utf8`, `help_formatter`,
+`bounded_run`, or `bounded_fetch` reaches this folder by one fixed step from its own
 location (it sits beside every tool's folder), imports `retrolog_bootstrap`, and asks
 for the libraries by name:
 
@@ -36,7 +36,7 @@ That is deliberately not a search. A walk up the ancestors would also take a
 same-named folder planted above the checkout, and a module planted there would be
 imported in place of the real one.
 
-Each folder is **appended** to `sys.path`, never inserted first, so no shared
+Each folder is appended to `sys.path`, never inserted first, so no shared
 library can shadow a standard-library module, and a folder already on the path is not
 added twice. That covers these libraries only. Each tool puts its own `src/` folder,
 and those of the sibling tools it imports from, first on the path, so a module inside

@@ -5,8 +5,9 @@ years drift between formats and conventions: plain text from different machines 
 encodings, Word 97 `.doc` files, newer `.docx` files, and ratings marked by a symbol
 font thumb, a color, a highlight, a small picture, an emoji or a single letter. This
 tool reads the whole folder without changing it and reports which of those
-conventions each part of the folder uses, with a few sample lines of each kind. A
-later parse step reads the report to decide how to read each group of files.
+conventions each part of the folder uses, with a few sample lines of each kind. The
+operator reads the report to write the rules file that tells `retrolog_parse` how to
+read each group of files.
 
 **The report quotes real text from the source files.** Sample lines, and the
 annotations around them, are copied from the lists themselves. Treat the report as
@@ -33,11 +34,11 @@ python retrolog_survey.py --path path/to/lists --out path/to/reports
 
 Prerequisites: Python 3.12 or later with `python-docx`. Converting `.doc` files needs
 macOS, whose built-in `textutil` does it; LibreOffice is optional. Text and `.docx`
-files need neither. Run order: this survey first, then the parse step that reads
-`report.json`.
+files need neither. Run order: this survey first; read `report.md`, write the rules
+file, then run `retrolog_parse`.
 
 On success the tool prints one line per group to standard output, with counts only:
-`<group>: <n> files, <n> lines, <n> errors`.
+`<group>: <n> files, <n> lines, <n> errors`, each noun singular for a count of one.
 
 ## Exit codes
 
@@ -112,7 +113,7 @@ no longer names.
 | File | Holds |
 | --- | --- |
 | `.retrolog_survey` | The marker that lets a later run reuse this folder. |
-| `report.json` | The report, for the parse step: sorted keys, two-space indent, UTF-8. |
+| `report.json` | The report as data: sorted keys, two-space indent, UTF-8. |
 | `report.md` | The same report laid out for reading. |
 | `images/<sha256_12>.<ext>` | Each distinct image found in a Word document, once. The extension is the declared type's when that is a raster image type; any other type, SVG and EMF included, is written as `.bin`, so no image written is one a browser would run. |
 
@@ -154,13 +155,14 @@ bound is reported as `BadDocx: expands past limit` rather than read. An archive
 declaring more members than any Word document holds (the cap is `MAX_MEMBERS` in
 `src/survey_docx.py`; a Word document has tens) is reported as
 `BadDocx: too many members` before its member list is read. A package with a part
-declaring a document type, which no part python-docx parses as XML carries and which is
-how an entity-expansion bomb or an external-file read is built, is reported as
-`BadDocx: document type declaration` before any of it is parsed as a document. Only a
-part the package's `[Content_Types].xml` declares an image is exempt: Word stores an
-inserted SVG that way, often with a doctype, and python-docx never parses an image as
-XML. The exemption follows the declared type, not the part's name, because python-docx
-parses a main document part as XML whatever its name ends with.
+that declares a document type is reported as `BadDocx: document type declaration`
+before any of it is parsed as a document: no part python-docx parses as XML carries
+one, and a document type declaration is how an entity-expansion bomb or an
+external-file read is built. Only a part the package's `[Content_Types].xml` declares
+as an image is exempt: Word stores an inserted SVG that way, often with a doctype, and
+python-docx never parses an image as XML. The exemption follows the declared type, not
+the part's name, because python-docx parses a main document part as XML whatever its
+name ends with.
 
 ### How a sample line is described
 
@@ -211,8 +213,8 @@ A Word 97 `.doc` cannot be read directly, so it is converted to `.docx` first.
   kept, and both kept, with each converter's status (`ok`, `failed`, `absent`) and
   detail (an exit code or an exception class name).
 - **No sandbox.** Both converters parse the untrusted `.doc` natively, as the user
-  running the survey and with no sandbox around them; `bounded_run` bounds how long
-  each may run (`--timeout`), not what it may do.
+  running the survey and with no sandbox around them; `--timeout` bounds how long
+  each may run, not what it may do.
 - `--no-convert` skips all of this: a `.doc` is counted and nothing else, and the
   report's `converters` reads `skipped` for both.
 

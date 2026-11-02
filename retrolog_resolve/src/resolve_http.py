@@ -1,8 +1,10 @@
 """Resolve's HTTP layer: service headers, pacing, a URL-keyed cache and 429/401 handling.
 
 ``Client.get_json`` is the one way resolve reads Open Library or TMDb. It serves a
-cached answer when it has one, so a re-run after editing the overrides sends nothing;
-otherwise it waits out the service's pacing interval, fetches through
+cached answer when it has one, so a re-run after editing the overrides sends only the
+requests no earlier run had answered: a new override id's details, the search for a
+title whose override was removed, and any request that failed. Otherwise it waits out
+the service's pacing interval, fetches through
 ``bounded_fetch.fetch_url`` (https only, bounded in size and time, caller headers never
 carried to another host on a redirect), decodes the body as JSON and caches it. A
 failed lookup is never cached.
@@ -48,7 +50,10 @@ RawFetch = Callable[[str, float, Mapping[str, str]], bytes]
 # The longest a 429's Retry-After is honored; also the wait when it is absent or
 # unreadable, since a server that says "slow down" without saying how long means it.
 MAX_RETRY_AFTER = 60.0
-OPEN_LIBRARY_INTERVAL = 1.0  # seconds between requests: its stated anonymous limit
+# Seconds between requests: Open Library's documented limit for a request that does not
+# identify itself (https://openlibrary.org/developers/api, "Rate Limits"). It is kept
+# even with a contact in the User-Agent, which that page allows three times as fast.
+OPEN_LIBRARY_INTERVAL = 1.0
 
 _USER_AGENT = "retrolog-resolve/1.0"
 # A contact must stay inside the User-Agent's comment: a parenthesis would close or
@@ -105,7 +110,7 @@ def open_library(contact: str | None) -> Service:
     """The Open Library service, its User-Agent naming ``contact`` when one is given.
 
     An empty contact is no contact. ``ValueError`` (naming neither the contact nor the
-    offending character) when it holds anything but printable ASCII or a parenthesis.
+    offending character) when it holds a parenthesis or anything but printable ASCII.
     """
     if contact and not _contact_is_safe(contact):
         raise ValueError(_CONTACT_REFUSAL)
@@ -211,6 +216,10 @@ class Client:
         # Keyed by service name: a Service holds a mapping, so it is not hashable.
         self._last_request: dict[str, float] = {}
         self._stopped: set[str] = set()
+        # The URLs this run has cached. --refresh skips only what earlier runs wrote,
+        # so a URL that repeats within a run (a film logged in several years) is
+        # still asked once.
+        self._written: set[str] = set()
 
     def get_json(self, service: Service, url: str) -> object:
         """The decoded JSON at ``url``, from the cache or one paced request.
@@ -240,10 +249,11 @@ class Client:
     def _read_cache(self, url: str) -> tuple[bool, object]:
         """(True, value) for a readable cached answer; (False, None) for a miss.
 
-        An unreadable or corrupt entry is a miss, so it is fetched and rewritten.
+        An unreadable or corrupt entry is a miss, so it is fetched and rewritten. Under
+        ``refresh`` every entry this run did not write is a miss.
         """
         path = self._cache_path(url)
-        if path is None or self._refresh:
+        if path is None or (self._refresh and url not in self._written):
             return False, None
         try:
             return True, _decode(path.read_bytes())
@@ -260,6 +270,7 @@ class Client:
             write_atomic_bytes(path, body)
         except OSError:
             raise LookupFailed(f"{service.name}: could not write the cache") from None
+        self._written.add(url)
 
     def _fetch_with_one_retry(self, service: Service, url: str) -> bytes:
         """One attempt, and after a 429 one more once its wait is over."""

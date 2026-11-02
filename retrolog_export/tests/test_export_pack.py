@@ -14,7 +14,7 @@ from hypothesis import strategies as st
 _TESTS = Path(__file__).resolve().parent
 _TOOL = _TESTS.parent
 # Inserted last first, so sys.path reads in retrolog_export.SOURCE_DIRS' order with the
-# tool's own src/ ahead of resolve's, parse's and the survey's.
+# tool's own src/ ahead of resolve's, parse's, and the survey's.
 sys.path.insert(0, str(_TOOL.parent / "retrolog_survey" / "src"))
 sys.path.insert(0, str(_TOOL.parent / "retrolog_parse" / "src"))
 sys.path.insert(0, str(_TOOL.parent / "retrolog_resolve" / "src"))

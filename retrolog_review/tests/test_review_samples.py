@@ -45,9 +45,11 @@ class SampleInputsTest(unittest.TestCase):
         )
 
     def test_picks_are_keyed_to_the_sample_review(self) -> None:
-        picks = json.loads(build_review_samples.PICKS.read_text(encoding="utf-8"))
         digest = hashlib.sha256(build_review_samples.REVIEW.read_bytes()).hexdigest()
-        self.assertEqual(picks["review_sha256"], digest)
+        for path in (build_review_samples.PICKS, build_review_samples.PICKS_ROUND_2):
+            with self.subTest(path=path.name):
+                picks = json.loads(path.read_text(encoding="utf-8"))
+                self.assertEqual(picks["review_sha256"], digest)
 
     def test_picks_show_each_kind_of_answer(self) -> None:
         picks = json.loads(build_review_samples.PICKS.read_text(encoding="utf-8"))
@@ -75,8 +77,10 @@ class SampleOutputsTest(unittest.TestCase):
         self.assertEqual(code, _EXIT_OK)
         self.assertEqual(
             printed,
-            "8 entries on the page; 3 errors and 4 applied overrides not shown.\n"
-            "3 overrides written for 3 picks, 4 kept, 1 undecided.\n",
+            "9 entries on the page; 3 errors and 4 applied overrides not shown.\n"
+            "4 overrides written for 4 picks, 4 kept, 1 undecided.\n"
+            "1 override appended for 1 pick, 0 kept, 8 undecided; "
+            "the file now holds 5 overrides.\n",
         )
         names = sorted(path.name for path in _EXPECTED.iterdir())
         self.assertEqual(names, sorted(path.name for path in self.out.iterdir()))
@@ -85,6 +89,19 @@ class SampleOutputsTest(unittest.TestCase):
                 self.assertEqual(
                     (self.out / name).read_bytes(), (_EXPECTED / name).read_bytes()
                 )
+
+    def test_the_second_round_keeps_the_first_rounds_file_whole(self) -> None:
+        first = (_EXPECTED / build_review_samples.OVERRIDES_NAME).read_bytes()
+        second = (_EXPECTED / build_review_samples.ROUND_2_NAME).read_bytes()
+        self.assertTrue(second.startswith(first))
+        self.assertGreater(len(second), len(first))
+
+    def test_a_refused_append_writes_nothing(self) -> None:
+        absent = _SAMPLES / "absent"
+        with mock.patch.object(build_review_samples, "PICKS_ROUND_2", absent):
+            code, _ = _quietly(["--out", str(self.out)])
+        self.assertNotEqual(code, _EXIT_OK)
+        self.assertFalse(self.out.exists())
 
     def test_a_refused_mode_writes_nothing(self) -> None:
         with mock.patch.object(build_review_samples, "PICKS", _SAMPLES / "absent"):

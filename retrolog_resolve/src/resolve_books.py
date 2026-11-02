@@ -3,8 +3,8 @@
 Pure: nothing here touches the network. The caller fetches ``search_url``'s URL and
 hands ``parse_search`` the decoded JSON body, whatever shape it has. A title is looked
 up in at most three steps (``next_step``), each asking less of the editions, so a work
-with no English edition carrying an ISBN is still found by the last step. Each
-URL carries only the title and the read year.
+with no English edition carrying an ISBN is still found by the last step. Each URL
+carries only the title and the read year.
 """
 
 from __future__ import annotations
@@ -14,6 +14,7 @@ from collections.abc import Mapping, Sequence
 from typing import Final, Literal
 
 import resolve_isbn
+from resolve_columns import CREATOR_JOINER
 from resolve_types import Candidate
 
 SEARCH: Final = "https://openlibrary.org/search.json"
@@ -41,7 +42,6 @@ _FIELDS: Final = (
 _LIMIT: Final = 10
 # Open Library's code for English, as its editions' language lists hold it.
 _ENGLISH: Final = "eng"
-_AUTHOR_JOIN: Final = " & "
 
 
 def solr_phrase(title: str) -> str:
@@ -72,7 +72,10 @@ def search_url(title: str, date_year: int | None, step: Step) -> str:
 
 
 def next_step(step: Step) -> Step | None:
-    """The step tried when ``step`` found no exact title, or None after the last."""
+    """The step tried after ``step``, or None after the last.
+
+    The chain moves on when ``step`` found no exact title with an ISBN.
+    """
     return _NEXT[step]
 
 
@@ -127,7 +130,7 @@ def _candidate(work: object, step: Step) -> Candidate | None:
         title=title,
         original_title="",
         year=_year(work.get("first_publish_year")),
-        creator=_AUTHOR_JOIN.join(_texts(work.get("author_name"))),
+        creator=CREATOR_JOINER.join(_texts(work.get("author_name"))),
         isbn13=_edition_isbn13(work, step),
     )
 

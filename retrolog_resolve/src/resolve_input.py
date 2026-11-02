@@ -1,12 +1,12 @@
 """Read parse's CSV files back as rows, keeping every cell exactly as it was written.
 
 ``read_parsed`` reads each ``<medium>-<year>.csv`` and ``<medium>-undated.csv`` directly
-in the parse output folder, in name order, and ignores every other file there
+in the parse output folder, the names ``parse_output.CSV_NAME`` matches, by medium and
+then year, and ignores every other file there
 (``review.json``, ``review.md``, the tool's marker), and every CSV of a medium the run
-did not select. Each cell stays text, so the row a
-later step writes back is byte-identical in parse's columns; only the medium, title,
-years and source line are parsed out, and a cell that cannot be is refused rather than
-guessed at.
+did not select. Each cell stays text, so the row a later step writes back is
+byte-identical in parse's columns; only the medium, title, years, and source line are
+parsed out, and a cell that cannot be is refused rather than guessed at.
 
 Every ``InputError`` names the CSV by its own name and the line, never a path above the
 folder and never the cell's text, which can be the operator's private list content.
@@ -16,18 +16,15 @@ from __future__ import annotations
 
 import csv
 import datetime
-import re
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
 
-from parse_output import COLUMNS, UNDATED
+from parse_output import COLUMNS, CSV_NAME, UNDATED, year_order
 from parse_rows import title_key
 from resolve_columns import DATE_CELL, LINE_CELL, YEAR_CELL
 from resolve_types import InputRow, Medium, RunMedium
-
-CSV_NAME = re.compile(r"^(book|film)-(\d{4}|undated)\.csv$", re.ASCII)
 
 
 class InputError(Exception):
@@ -120,7 +117,7 @@ def _read_csv(path: Path, csv_file: _CsvFile) -> list[InputRow]:
 
 
 def _csv_files(parsed: Path, selected: RunMedium) -> list[_CsvFile]:
-    """The ``selected`` CSV_NAME files directly in ``parsed``, in name order.
+    """The ``selected`` CSV_NAME files directly in ``parsed``, by medium, then year.
 
     Every other entry is ignored, the other medium's CSVs included, so a damaged one
     of those cannot stop a run that does not read it.
@@ -139,11 +136,11 @@ def _csv_files(parsed: Path, selected: RunMedium) -> list[_CsvFile]:
                 found.append(_CsvFile(entry.name, medium, match.group(2)))
     except OSError:
         raise InputError("--parsed: cannot be read") from None
-    return sorted(found, key=lambda csv_file: csv_file.name)
+    return sorted(found, key=lambda each: (each.medium, year_order(each.year)))
 
 
 def read_parsed(parsed: Path, selected: RunMedium = "all") -> tuple[InputRow, ...]:
-    """Every row of every ``selected`` CSV_NAME file in ``parsed``, files in name order.
+    """Every row of every ``selected`` CSV_NAME file in ``parsed``, files in year order.
 
     Other files, the unselected medium's CSVs and directories are ignored. Raises
     ``InputError`` when ``parsed`` is not a folder, cannot be listed or holds no

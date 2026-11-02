@@ -2,9 +2,9 @@
 
 ``read_review`` takes the file's bytes, checks every field the page and the picks
 reader rely on, and keeps only the entries with a decision in them (the decidable
-kinds); the error kinds and ``override-applied`` are counted instead,
-since the operator fixes those by editing the overrides file by hand. ``page_data``
-turns the result into the object the page embeds.
+kinds); the error kinds and ``override-applied`` are counted instead, since the
+operator fixes an error by editing the overrides file by hand and an applied override
+needs nothing. ``page_data`` turns the result into the object the page embeds.
 
 Each row an entry lists is ``<source_file>:<source_line>``, and a pick writes one line
 override per row, so every row must split into a file and a line, and no two
@@ -13,7 +13,8 @@ three. Resolve groups rows by both years as well as the title, so one title can 
 several entries, told apart by their rows.
 
 Each candidate's ``id`` must be its catalog's id, as resolve's overrides take it: a
-film's TMDb id is ASCII digits, a book's Open Library work is ``/works/OL<digits>W``.
+film's TMDb id is ``resolve_columns.TMDB_ID``'s (one to ten ASCII digits, no leading
+zero); a book's Open Library work is ``/works/OL<digits>W``.
 The page builds a catalog link from the id, so an id of any other shape is refused
 rather than linked. A book's ``isbn13`` is empty or the ISBN-13 resolve writes, its
 check digit valid; a film's is empty.
@@ -31,12 +32,15 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import cast
 
+from resolve_columns import TMDB_ID as TMDB_ID
 from resolve_isbn import isbn13_or_none
 
 # The kinds the page shows, each with candidates and a typed id to pick from. Python
-# owns this list; the page treats every kind after the first two as starting on keep.
+# owns this list; the page starts the kinds in its own KEEP_KINDS on Keep, and the rest
+# undecided: ambiguous, suspect-exact, and not-found.
 DECIDABLE_KINDS = (
     "ambiguous",
+    "suspect-exact",
     "not-found",
     "most-voted",
     "variant",
@@ -50,7 +54,8 @@ APPLIED_KIND = "override-applied"
 _KINDS = frozenset(DECIDABLE_KINDS) | ERROR_KINDS | {APPLIED_KIND}
 
 _SCHEMA_VERSION = 1
-# The data block's own schema, which the page checks.
+# The data block's own schema: the page's readData shows its unreadable state for any
+# other (review.js's PAGE_SCHEMA must match).
 PAGE_SCHEMA = 1
 _MEDIA = ("book", "film")
 _RUN_MEDIA = (*_MEDIA, "all")
@@ -69,13 +74,16 @@ _LINE = re.compile(r"[0-9]{1,9}")
 _ROW_SEPARATOR = ":"
 _ROW_RULE = "must be <file>:<line>, the line a whole number of 1 or more"
 # The catalog ids resolve's overrides accept, ASCII only: \d would also take other
-# scripts' digits, which no id is written in. review_picks checks a pick's ids by these.
-TMDB_ID = re.compile(r"[0-9]+")
+# scripts' digits, which no id is written in. The film id is resolve's own TMDB_ID,
+# re-exported (the "as" import above) with OL_WORK and the two descriptions, since
+# review_picks checks a pick's ids by these.
 OL_WORK = re.compile(r"/works/OL[0-9]+W")
+TMDB_ID_SHAPE = "a string of 1 to 10 digits with no leading zero"
+OL_WORK_SHAPE = "a string /works/OL<digits>W"
 # Each medium's id pattern, and how a refusal describes it.
 _CANDIDATE_ID: Mapping[str, tuple[re.Pattern[str], str]] = {
-    "film": (TMDB_ID, "a string of digits"),
-    "book": (OL_WORK, "a string /works/OL<digits>W"),
+    "film": (TMDB_ID, TMDB_ID_SHAPE),
+    "book": (OL_WORK, OL_WORK_SHAPE),
 }
 # An entry's scope, which a pick names it by: medium, title and rows.
 Scope = tuple[str, str, tuple[str, ...]]
@@ -94,8 +102,9 @@ class Review:
     """A checked review: its digest, its medium, and what the page shows and counts."""
 
     sha256: str  # hex SHA-256 of the file's bytes, which keys the picks to it
-    medium: str  # "book", "film" or "all", as resolve wrote it
-    # The decidable entries in file order, each less "error", in the file's key order.
+    medium: str  # "book", "film", or "all", as resolve wrote it
+    # The decidable entries in file order, each without its "error" key, the rest in
+    # the file's key order.
     entries: tuple[Mapping[str, object], ...]
     errors: int  # entries of an error kind
     applied: int  # override-applied entries
@@ -105,7 +114,7 @@ def decode_json(data: bytes) -> object:
     """``data`` as UTF-8 JSON; ``NotJson`` otherwise, with no parser text (it quotes).
 
     json parses nesting recursively, so a deep enough nesting raises RecursionError
-    rather than a JSONDecodeError; it is refused the same.
+    rather than a JSONDecodeError; it is refused the same way.
     """
     try:
         return json.loads(data.decode("utf-8"))
@@ -257,7 +266,7 @@ def _document(data: bytes) -> dict[str, object]:
             f"schema_version: this version reads schema_version {_SCHEMA_VERSION} only"
         )
     if not isinstance(document["medium"], str) or document["medium"] not in _RUN_MEDIA:
-        raise ReviewError("medium: must be book, film or all")
+        raise ReviewError("medium: must be book, film, or all")
     return document
 
 
@@ -274,7 +283,7 @@ def _refuse_shared_scopes(tables: list[dict[str, object]]) -> None:
         scope = scope_of(table)
         if scope in seen:
             raise ReviewError(
-                f"entries[{index}]: the same medium, title and rows as "
+                f"entries[{index}]: the same medium, title, and rows as "
                 f"entries[{seen[scope]}]"
             )
         seen[scope] = index

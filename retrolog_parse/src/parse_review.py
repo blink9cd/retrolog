@@ -58,7 +58,7 @@ DETAILS: Mapping[str, str] = MappingProxyType(
         "unrated": "this entry has no rating",
         "unplaced": "no term block, folder or file name dates this entry",
         "color-outlier": "the mark's color is near no rules color, or equally near two",
-        "shape-conflict": "the mark's glyph does not carry the rating its color gives",
+        "shape-conflict": "the mark's glyph may not carry the rating its color gives",
         "unknown-code": "the letter code after the dash is not one the rules define",
         "stray-mark": "an untitled mark stands beside this entry",
         "no-color": "the entry's mark has no color to rate it by",

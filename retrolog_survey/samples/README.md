@@ -11,9 +11,9 @@ From the tool's folder (the one holding `retrolog_survey.py`):
 
 ```bash
 work="$(mktemp -d)"
-python3 samples/build_sample_tree.py --out "$work/hs_tree"
-python3 retrolog_survey.py --path "$work/hs_tree" --out "$work/hs_out" --no-convert
-diff "$work/hs_out/report.json" samples/expected_report.json
+python3 samples/build_sample_tree.py --out "$work/sample_tree"
+python3 retrolog_survey.py --path "$work/sample_tree" --out "$work/sample_out" --no-convert
+diff "$work/sample_out/report.json" samples/expected_report.json
 ```
 
 Any Python 3.12 or later with `python-docx` installed works in place of the

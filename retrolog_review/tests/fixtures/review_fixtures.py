@@ -1,6 +1,6 @@
 """Builders for retrolog_review's tests: review.json documents, picks and page files.
 
-Every title, creator and id here is invented. A review is built as a plain dict in
+Every title, creator, and id here is invented. A review is built as a plain dict in
 the shape retrolog_resolve's ``review_json`` writes (keys sorted), so a test changes
 one field and serializes it with ``as_bytes``.
 """
@@ -15,7 +15,7 @@ from pathlib import Path
 FIXTURES = Path(__file__).resolve().parent
 # The stand-in page files, never the real page/ ones: a test of the page writer must
 # not change when the front end does. Named ".in" so the web linters and the
-# JavaScript type check, which own the real page files, do not take them for some.
+# JavaScript type check, which own the real page files, do not take them for page files.
 TEMPLATE = FIXTURES / "template.html.in"
 STYLE = FIXTURES / "style.css.in"
 SCRIPT = FIXTURES / "script.js.in"

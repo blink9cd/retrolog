@@ -1,19 +1,23 @@
 {
   "counts": {
-    "by-title": 2,
+    "by-title": 1,
     "files": 2,
-    "films-sent": 5,
+    "films-sent": 6,
     "formula-cell": 1,
     "held-ambiguous": 1,
     "held-failed": 1,
     "held-no-title": 1,
     "held-split": 2,
+    "logged-no-stars": 1,
+    "omitted": 1,
     "on-service": 1,
     "override-unchecked": 1,
     "rows-cut": 2,
-    "rows-sent": 6,
+    "rows-sent": 7,
+    "same-date": 1,
     "undated": 1,
-    "unrated": 1
+    "unrated": 1,
+    "watched-only": 1
   },
   "entries": [
     {
@@ -54,9 +58,9 @@
       "title": "Placeholder Film Eleven"
     },
     {
-      "detail": "already on the account, so not sent",
+      "detail": "on the account as watched only, with no rating or diary entry, so sent in full",
       "error": false,
-      "kind": "on-service",
+      "kind": "watched-only",
       "rows": [
         "2010/seen.txt:13"
       ],
@@ -72,9 +76,9 @@
       "title": "Placeholder Film Four"
     },
     {
-      "detail": "sent by title with no tmdbID; check it in the import preview",
+      "detail": "named in letterboxd.omit, so not sent; remove the entry to consider it again",
       "error": false,
-      "kind": "by-title",
+      "kind": "omitted",
       "rows": [
         "2010/seen.txt:14"
       ],
@@ -99,6 +103,15 @@
       "title": "Placeholder Film Six"
     },
     {
+      "detail": "an earlier import sent it, so not sent again",
+      "error": false,
+      "kind": "on-service",
+      "rows": [
+        "2010/seen.txt:19"
+      ],
+      "title": "Placeholder Film Thirteen"
+    },
+    {
       "detail": "sent by title with no tmdbID; check it in the import preview",
       "error": false,
       "kind": "by-title",
@@ -117,7 +130,25 @@
       "title": "Placeholder Film Three"
     },
     {
-      "detail": "resolve found more than one match; settle it with an override",
+      "detail": "already logged on the account, so sent without stars to keep its rating",
+      "error": false,
+      "kind": "logged-no-stars",
+      "rows": [
+        "2019/films.txt:5"
+      ],
+      "title": "Placeholder Film Twelve"
+    },
+    {
+      "detail": "a diary entry on the account has this date; Letterboxd would update it rather than add one, so this row is not sent",
+      "error": false,
+      "kind": "same-date",
+      "rows": [
+        "2010/seen.txt:18"
+      ],
+      "title": "Placeholder Film Twelve"
+    },
+    {
+      "detail": "resolve did not settle on one match; settle it with an override",
       "error": true,
       "kind": "held-ambiguous",
       "rows": [

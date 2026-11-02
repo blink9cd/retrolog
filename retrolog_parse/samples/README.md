@@ -42,7 +42,7 @@ progress-skipped: 1
 | --- | --- |
 | 21-22/autumn books.txt | A two-year folder's file whose name holds an earlier word that is also a season: October of the first year. |
 | 21-22/movies.txt | A file the `[[terms]]` block dates; a divider line. |
-| 21-22/more books.txt | No break word and no term block: its row is undated, in `book-undated.csv`. |
+| 21-22/more books.txt | No earlier or later word and no term block: its row is undated, in `book-undated.csv`. |
 | 23/spring books.txt | A progress note, finished by the rated `Long Book` in 23/books.txt, which is dated later. |
 | 23/books.txt | A heading, a blank line, two sections, a split code, a rewatch, a comment, an override, an unknown code, an entry with no code and an unparsed line. |
 | 23/movies.docx | A Word file: a legend of four colored symbol marks sharing its line with an entry, then two entries on one line. |

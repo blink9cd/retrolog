@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "review_sha256": "8affb6df29e407bdb6eaec5149934b08c5c7414c2ce35816dfd5a1006910afa9",
+  "review_sha256": "80310d72a806b120f98d67c850b4e211032f8aca44a06b4828ef6e2241c547a0",
   "picks": [
     {
       "medium": "book",
@@ -15,6 +15,14 @@
       "title": "Placeholder Book Three",
       "rows": ["2010/read.txt:4"],
       "answer": "keep"
+    },
+    {
+      "medium": "film",
+      "title": "Placeholder Film Seven",
+      "rows": ["2010/seen.txt:16"],
+      "answer": {
+        "tmdb_id": "1000016"
+      }
     },
     {
       "medium": "film",

@@ -200,11 +200,14 @@ class UntouchedTest(RowsCase):
         override = overrides_of(
             f'medium = "film"\ntitle = "{_COLLIDING}"\ntmdb_id = "9"'
         )
+        details = resolve_films.details_url("9")
+        pages = {**_collision(), details: tmdb_result(9, _COLLIDING)}
         out, review = self.run_all(
-            [input_row(_COLLIDING, medium="film")], override, pages=_collision()
+            [input_row(_COLLIDING, medium="film")], override, pages=pages
         )
         self.assertEqual(self.status(out[0]), ("override", "", "", "9"))
-        self.assertEqual(self.fetch.calls, [])
+        # No search: only the override id's details are asked for.
+        self.assertEqual(self.fetch.calls, [details])
         self.assertEqual(kinds(review), [("override-applied", _COLLIDING)])
 
 
@@ -217,6 +220,7 @@ class ReviewKindsTest(unittest.TestCase):
                 "override-mismatch",
                 "failed",
                 "ambiguous",
+                "suspect-exact",
                 "not-found",
                 "most-voted",
                 "variant",
@@ -287,6 +291,7 @@ class NonFiniteRatioTest(unittest.TestCase):
                     work_year=None,
                     date_year=2010,
                     vote_ratio=ratio,
+                    vote_floor=1,
                 )
                 self.assertEqual(lookup.status, "ambiguous")
 

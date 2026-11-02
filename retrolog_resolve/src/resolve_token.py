@@ -11,7 +11,7 @@ command substitution, no variable expansion, no escape processing. A line is one
 
 Anything else is refused: a malformed line, any other variable, the variable twice, a
 NUL anywhere, a file over ``MAX_TOKEN_FILE_BYTES`` or one that is not UTF-8. A refusal
-names a LINE NUMBER at most, never the path, the value or the name found on the line,
+names a line number at most, never the path, the value or the name found on the line,
 because a mistyped line may hold the token in any position. An empty value is no token.
 
 On POSIX the open file must be a regular file owned by the current user with no group

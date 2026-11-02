@@ -38,7 +38,13 @@ def _load_module_from(path: Path) -> types.ModuleType:
     spec = importlib.util.spec_from_file_location("retrolog_bootstrap_copy", path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    # Registered for the import only: a dataclass in the copy would read
+    # sys.modules[cls.__module__] while its body runs, and finds None when unregistered.
+    sys.modules[spec.name] = module
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        del sys.modules[spec.name]
     return module
 
 

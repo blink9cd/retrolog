@@ -1,6 +1,6 @@
 """The shared rows and helpers of the export_select example tests.
 
-The importing test puts the tool's, resolve's, parse's and the survey's src/ folders
+The importing test puts the tool's, resolve's, parse's, and the survey's src/ folders
 and this folder on ``sys.path`` before importing this module. Every title is invented
 or a public-domain film, and every id is made up.
 """
@@ -13,7 +13,7 @@ from collections.abc import Sequence
 from typing import TypedDict, Unpack
 
 import export_select
-from export_types import Cutoff, FilmKey, ResolvedRow
+from export_types import Account, Cutoff, FilmKey, ResolvedRow
 
 BASE = ResolvedRow(
     source_csv="film-2010.csv",
@@ -94,15 +94,30 @@ def in_account(key: FilmKey, account: frozenset[FilmKey]) -> bool:
     return key in account or FilmKey(key.title_key, None) in account
 
 
+def imported(keys: frozenset[FilmKey]) -> Account:
+    """An account whose diary holds ``keys``, each tagged by an earlier import."""
+    return Account(logged=keys, imported=keys)
+
+
 def select(
     rows: Sequence[ResolvedRow],
     *,
     cutoff: Cutoff | None = None,
-    account: frozenset[FilmKey] = frozenset(),
+    account: frozenset[FilmKey] | Account = frozenset(),
+    watched_dates: bool = True,
 ) -> export_select.Selection:
-    """``select`` with an on_service matching the account as ``in_account`` does."""
+    """``select`` with an on_service matching the account as ``in_account`` does.
+
+    A bare set of keys is an account an earlier import made (``imported``), so its
+    films are skipped whole, as every film on the account once was.
+    """
+    whole = account if isinstance(account, Account) else imported(account)
     return export_select.select(
-        rows, cutoff=cutoff, account=account, on_service=in_account
+        rows,
+        cutoff=cutoff,
+        account=whole,
+        on_service=in_account,
+        watched_dates=watched_dates,
     )
 
 

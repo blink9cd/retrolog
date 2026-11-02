@@ -1,10 +1,10 @@
 """The shared case of the retrolog_export command-line tests: inputs, a run, checks.
 
-The importing test puts the tool's folder, its src/ folders, resolve's, parse's and
-the survey's src/ folders, this folder and the samples folder on ``sys.path`` before
-importing this module. ``CliCase`` writes a temporary resolve folder, account export
+The importing test puts the tool's folder, its src/ folders, resolve's, parse's, and
+the survey's src/ folders, this folder, and the samples folder on ``sys.path`` before
+importing this module. ``CliCase`` writes a temporary resolve folder, account export,
 and export config, and runs ``main`` with a git stand-in, so no test reaches a real
-repository, a real account or the operator's own config.
+repository, a real account, or the operator's own config.
 """
 
 from __future__ import annotations

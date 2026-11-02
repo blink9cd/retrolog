@@ -20,8 +20,8 @@ live tests then prove by pid, with a bounded wait, that no child survives. The u
 the arm where ``Popen`` itself is interrupted and so returned nothing to kill.
 
 Once registered, the child is reachable through ``kill_live_trees``, and what remains is that its
-pid is forgotten however the run ends. An interrupt raised at the drain's frame entry -- a point
-CPython checks for a pending signal with no tracer installed -- or at the first trace event after
+pid is forgotten however the run ends. An interrupt raised at the drain's frame entry (a point
+CPython checks for a pending signal with no tracer installed) or at the first trace event after
 the registration, must still leave the registry empty.
 """
 
@@ -56,7 +56,7 @@ _SLEEPER = [sys.executable, "-c", "import time; time.sleep(3600)"]
 _FAR_BOUND = 3600.0
 
 #: Real seconds allowed for the interrupted child to be gone. A ceiling on a possibly loaded
-#: host, not an estimate: the fix kills and reaps it before the interrupt propagates, so the
+#: host, not an estimate: the run kills and reaps it before the interrupt propagates, so the
 #: first probe already finds it gone, and only a survivor spends the wait.
 _GONE_CEILING = 10.0
 

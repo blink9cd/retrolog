@@ -5,7 +5,7 @@ compares discovery against itself and passes for an empty suite, which is the de
 this guard exists to catch. What IS derived is the file SET: `_tests_by_module`
 flattens the suite `load_tests` actually folds into the real run into a per-file count,
 and `GroupedSuiteDiscoveryTest.test_grouped_suite_meets_its_own_per_file_floor` checks
-that count's key set against `_MIN_TESTS_BY_FILE`'s -- so a new tests/test_*.py arrives
+that count's key set against `_MIN_TESTS_BY_FILE`'s, so a new tests/test_*.py arrives
 unfloored loudly, not silently absorbed into a combined total.
 
 ``_SUITE_DIR`` is the discovery root for ``_grouped_suite()``, with
@@ -38,25 +38,42 @@ _MIN_TESTS_BY_FILE: dict[str, int] = {
     # on-service detail and films with no title.
     "test_export_select_titles.py": 26,
     # Selection's property tests: every row placed once, no held watch lost.
-    "test_export_select_props.py": 3,
+    "test_export_select_props.py": 4,
+    # Selection's account classes: watched only, logged, imported, same date.
+    "test_export_select_account.py": 18,
     # One resolve row as one Letterboxd import row (export_letterboxd).
     "test_export_letterboxd.py": 31,
     # The review note's rating sentence: its config keys and the review text.
-    "test_export_rating_note.py": 19,
+    "test_export_rating_note.py": 22,
     # Films packed whole into files under the row and byte caps (export_pack).
     "test_export_pack.py": 15,
     # Account exports (export_account): the films already on the service.
     "test_export_account.py": 44,
     # The account zip's bounds and a fuzz of damaged zip bytes.
     "test_export_account_limits.py": 11,
-    # The service table, import file names and review text (export_services,
+    # The export reader opened to other tools: named members, subfolders, the option.
+    "test_export_account_texts.py": 12,
+    # Each account file's part: the watched, logged, and imported films, the
+    # retrolog tag rule, the diary's dates, and its tagged entries' dates.
+    "test_export_account_classes.py": 17,
+    # Matching beyond an exact key (export_match) and the hyphen fold.
+    "test_export_match.py": 13,
+    # Selection's near-year and tagged-date account checks.
+    "test_export_select_match.py": 16,
+    # The service table, import file names, and review text (export_services,
     # export_output).
     "test_export_output.py": 15,
     # The command line end to end, and the committed sample.
     "test_export_cli.py": 34,
-    # What a run leaves in --out: stale files, the write order and the
+    # What a run leaves in --out: stale files, the write order, and the
     # formula-cell flag.
     "test_export_cli_writes.py": 7,
+    # Every account class end to end.
+    "test_export_cli_account.py": 3,
+    # The omit list: its config entries, the stale-entry check, and selection.
+    "test_export_omit.py": 19,
+    # The dry run, the one-film test run, and the omit list end to end.
+    "test_export_cli_modes.py": 19,
     # The tool and its sample builder on a bare interpreter.
     "test_export_stdlib_only.py": 3,
 }
@@ -119,7 +136,7 @@ class GroupedSuiteDiscoveryTest(unittest.TestCase):
             own_found,
             _OWN_GUARD_TESTS,
             f"this module contributed {own_found} of its own tests, expected exactly "
-            f"{_OWN_GUARD_TESTS} -- a guard above may have been deleted, or a new one "
+            f"{_OWN_GUARD_TESTS}; a guard above may have been deleted, or a new one "
             f"added without raising _OWN_GUARD_TESTS",
         )
         # Derived from the per-file floors rather than restated as a second total: that
@@ -130,7 +147,7 @@ class GroupedSuiteDiscoveryTest(unittest.TestCase):
             grouped_found,
             grouped_floor,
             f"loading this module yielded {grouped_found} grouped tests, expected at "
-            f"least {grouped_floor} -- load_tests may have been removed or renamed, "
+            f"least {grouped_floor}; load_tests may have been removed or renamed, "
             f"silently dropping a tests/ suite from the real run",
         )
 
@@ -153,7 +170,7 @@ class GroupedSuiteDiscoveryTest(unittest.TestCase):
                 found,
                 floor,
                 f"tests/{filename} yielded {found} tests, expected at least "
-                f"{floor} -- a test may have been removed from it",
+                f"{floor}; a test may have been removed from it",
             )
 
 

@@ -168,7 +168,7 @@ class TagsTest(unittest.TestCase):
         self.assertEqual(
             _refusal(config_toml(tags=["retrolog", "retrolog one, two"])),
             "letterboxd.tags: a tag must be 1 to 50 characters with no comma, "
-            "quote or control character",
+            "quote, or control character",
         )
 
     def test_bad_tags_are_refused(self) -> None:
@@ -208,8 +208,12 @@ class TagsTest(unittest.TestCase):
                     "letterboxd.tags: must be a list of strings",
                 )
 
-    def test_empty_tag_list_is_no_tags(self) -> None:
-        self.assertEqual(_letterboxd(config_toml(tags=[])).tags, ())
+    def test_an_empty_tag_list_is_refused_by_its_key(self) -> None:
+        # A re-run finds an earlier import only by its tag, so every row needs one.
+        self.assertEqual(
+            _refusal(config_toml(tags=[])),
+            "letterboxd.tags: must hold at least one tag",
+        )
 
     def test_bad_rating_tag_is_refused_by_its_key(self) -> None:
         message = _refusal(config_toml(rating_tags={"1": "a,b"}))

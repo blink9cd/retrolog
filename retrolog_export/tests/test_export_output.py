@@ -14,7 +14,7 @@ from pathlib import Path
 _TESTS = Path(__file__).resolve().parent
 _TOOL = _TESTS.parent
 # Inserted last first, so sys.path reads in retrolog_export.SOURCE_DIRS' order with the
-# tool's own src/ ahead of resolve's, parse's and the survey's.
+# tool's own src/ ahead of resolve's, parse's, and the survey's.
 sys.path.insert(0, str(_TOOL.parent / "retrolog_survey" / "src"))
 sys.path.insert(0, str(_TOOL.parent / "retrolog_parse" / "src"))
 sys.path.insert(0, str(_TOOL.parent / "retrolog_resolve" / "src"))
@@ -78,7 +78,7 @@ class ServicesTest(unittest.TestCase):
                 Path(holder), {"watched.csv": account_csv([("Metropolis", "1927")])}
             )
             account = _SPEC.read_account(folder)
-        self.assertEqual(account, frozenset({FilmKey("metropolis", 1927)}))
+        self.assertEqual(account.watched, frozenset({FilmKey("metropolis", 1927)}))
 
     def test_the_table_is_read_only(self) -> None:
         with self.assertRaises(TypeError):

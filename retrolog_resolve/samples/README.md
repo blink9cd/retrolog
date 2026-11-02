@@ -29,16 +29,17 @@ marker and `cache` folder itself, so the run is answered entirely from the cache
 The tool prints, and exits `1`, because the sample shows each error kind once:
 
 ```text
-rows: 16
+rows: 17
 status resolved: 7
 status override: 4
-status ambiguous: 2
+status ambiguous: 3
 status not-found: 2
 status failed: 1
 review override-unused: 1
 review override-mismatch: 1
 review failed: 1
 review ambiguous: 2
+review suspect-exact: 1
 review not-found: 2
 review most-voted: 1
 review variant: 1
@@ -48,7 +49,7 @@ review override-applied: 4
 ```
 
 Standard error adds `retrolog_resolve.py: 3 error item(s); see review.md`, and `diff`
-prints nothing: both CSVs, `review.json` and `review.md` match byte for byte.
+prints nothing: both CSVs, `review.json`, and `review.md` match byte for byte.
 
 ## One medium only
 
@@ -65,13 +66,14 @@ diff -r -x .retrolog_resolve -x cache "$film/out" samples/expected-film
 The tool prints, and exits `1`:
 
 ```text
-rows: 9
+rows: 10
 status resolved: 5
 status override: 2
-status ambiguous: 1
+status ambiguous: 2
 status not-found: 1
 review override-mismatch: 1
 review ambiguous: 1
+review suspect-exact: 1
 review not-found: 1
 review most-voted: 1
 review variant: 1
@@ -91,16 +93,17 @@ sample's own.
 
 | Row | Shows |
 | --- | --- |
-| `Moby Dick`, `Metropolis` | `override`: the example file's title-only entries settle them, unsearched. |
+| `Moby Dick`, `Metropolis` | `override`: the example file's title-only entries settle them, unsearched. `Metropolis` takes its TMDb titles and its empty year from the details of its override's id. |
 | `Placeholder Book One` | `override` with no id: the example's `unresolvable` entry. |
-| `Placeholder Film One`, line 7 | `override`: the example's entry for that line only. |
+| `Placeholder Film One`, line 7 | `override`: the example's entry for that line only. Its id's details give it a TMDb original title, `Film Un Factice`, and its empty year. |
 | `Placeholder Film One`, line 9 | The same title on another line is still searched, and `resolved`. |
 | `Placeholder Book Two` | `resolved` at the first search step, with an ISBN-13. |
 | `Placeholder Book Three` | `resolved` only by the last step, with no ISBN: a `no-isbn` entry. |
 | `Placeholder Book Four`, `Placeholder Film Two` | `ambiguous`: two exact titles each, listed; the films with their directors, the default `--directors ambiguous`. A third film released after the row's year is dropped. |
 | `Placeholder Film Six` | `resolved` by most votes: two exact titles, the first with thirty times the second's votes, so a `most-voted` entry lists both, with their votes and directors. |
-| `Placeholder Story II` | `resolved` by a variant: no candidate's title is exact, but under the sequel numeral the row's `II` meets `Placeholder Story 2`'s `2`, so a `variant` entry names it. The other candidate, `Placeholder Story`, matches under no variant. |
+| `Placeholder Story II` | `resolved` by a variant: no candidate's title is exact, but under the sequel-numeral variant the row's `II` meets `Placeholder Story 2`'s `2`, so a `variant` entry names it. The other candidate, `Placeholder Story`, matches under no variant. |
 | `The Placeholder Hour` | `resolved` by a second search: the first finds only `Placeholder Hourglass`, which no variant meets, so TMDb is searched again for `Placeholder Hour`, whose one match a `re-searched` entry lists with its director. |
+| `Placeholder Film Seven` | `ambiguous` under a `suspect-exact` entry: one exact title, but no release date and 0 votes, so it is held, with no ids, its reasons in the detail, and its one candidate listed with its director. |
 | `Placeholder Book Five`, `Placeholder Film Three` | `not-found`: every search is empty. |
 | `Placeholder Book Six` | `failed`: its answer is left out of the cache, and `--cache-only` sends no request. |
 | `Placeholder Film Five`, line 12 | An `override-mismatch`: the sample's entry for line 12 names another title, so it is not applied and the row is searched. |

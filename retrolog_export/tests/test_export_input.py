@@ -192,6 +192,31 @@ class ReadResolvedTest(unittest.TestCase):
             ],
         )
 
+    def test_a_year_before_1000_is_read_in_year_order(self) -> None:
+        # Regression: resolve keeps parse's film-150.csv name for a row dated in the
+        # year 150 (unpadded), which a four-digit name pattern skipped without a
+        # word. Files go in year order, not name order, where "150" sorts after "1499".
+        files = {
+            "film-1500.csv": "1500-01-01",
+            "film-150.csv": "0150-06-01",
+            "film-undated.csv": "",
+            "film-1499.csv": "1499-01-01",
+        }
+        write_resolved(
+            self.resolved,
+            {name: csv_text([resolved_row(date=date)]) for name, date in files.items()},
+        )
+        rows = export_input.read_resolved(self.resolved, "film")
+        self.assertEqual(
+            [(row.source_csv, row.date and row.date.year) for row in rows],
+            [
+                ("film-150.csv", 150),
+                ("film-1499.csv", 1499),
+                ("film-1500.csv", 1500),
+                ("film-undated.csv", None),
+            ],
+        )
+
     def test_book_csvs_are_ignored(self) -> None:
         # A damaged book CSV beside a good film one: never opened, so never refused.
         write_resolved(
@@ -210,7 +235,7 @@ class ReadResolvedTest(unittest.TestCase):
             {
                 "film-2010.csv": csv_text([resolved_row()]),
                 "review.json": "{}",
-                "film-10.csv": "damaged",
+                "film-2010.csv.bak": "damaged",
                 "Film-2011.csv": "damaged",
             },
         )
@@ -337,11 +362,13 @@ class ReadResolvedTest(unittest.TestCase):
                 )
 
     def test_bad_tmdb_id_is_refused(self) -> None:
-        for cell in ("12a", " 12", "-1"):
+        # A leading zero or an eleventh digit is no TMDb id, by resolve's own rule.
+        for cell in ("12a", " 12", "-1", "0603", "12345678901"):
             with self.subTest(cell=cell):
                 self.assertEqual(
                     self._one(tmdb_id=cell),
-                    "film-2010.csv: line 2: tmdb_id must be empty or digits",
+                    "film-2010.csv: line 2: tmdb_id must be empty or 1 to 10 digits "
+                    "with no leading zero",
                 )
 
     def test_wrong_cell_count_is_refused(self) -> None:
@@ -403,7 +430,7 @@ class EntryPointTest(unittest.TestCase):
                 self.assertIn(str(folder), sys.path)
 
     def test_entry_point_alone_reaches_the_modules(self) -> None:
-        # -I -S: no PYTHONPATH, no site-packages and no script folder, so only the
+        # -I -S: no PYTHONPATH, no site-packages, and no script folder, so only the
         # entry point's own inserts can make the imports below resolve, on the
         # standard library alone. run_bounded kills the whole process tree on a
         # timeout before it reads the captured pipes.

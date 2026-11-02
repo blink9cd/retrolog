@@ -3,8 +3,8 @@
 `https_url_or_none` carries the `# fuzz-target` marker, and
 `test_fuzz_https_url_or_none` is the property test it promises. Anything the rule
 accepts is what a record may carry and what a request may be built from, so the
-property holds every accepted string to the whole contract -- https with a host,
-no userinfo, no space, control or format character -- over arbitrary text and over
+property holds every accepted string to the whole contract (https with a host,
+no userinfo, no space, control or format character) over arbitrary text and over
 URL-shaped strings built from schemes, userinfo, hosts, slashes and backslashes.
 The rule never raises: a string it cannot parse is "no URL".
 """

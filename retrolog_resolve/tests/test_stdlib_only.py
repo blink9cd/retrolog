@@ -1,8 +1,8 @@
 """retrolog_resolve and its sample builder run on a stock Python with no installed package.
 
 Each test runs a script in a child interpreter started with ``-I -S``: ``-S`` leaves
-every site-packages folder (the test runner's own included) off the path and ``-I`` ignores
-PYTHONPATH, so an import of python-docx (through the survey's modules) or of
+every site-packages folder (the test runner's own included) off the path and ``-I``
+ignores PYTHONPATH, so an import of python-docx (through the survey's modules) or of
 hypothesis (through the test fixtures) fails the run, as it would for an operator.
 """
 

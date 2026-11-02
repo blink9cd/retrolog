@@ -5,6 +5,7 @@ import test from "node:test";
 
 import {
   candidate,
+  choose,
   fakeWindow,
   loadReview,
   makeDom,
@@ -12,6 +13,7 @@ import {
   renderPage,
   sampleData,
   section,
+  stored,
 } from "./review_test_helpers.mjs";
 
 const review = loadReview();
@@ -33,7 +35,7 @@ test("the header shows progress, the not-shown line and the controls", () => {
   assert.equal(notShown.hidden, false);
   assert.equal(
     text(notShown),
-    "Not shown here: 1 error and 4 applied overrides. See review.md, and fix those by editing the overrides file by hand.",
+    "Not shown here: 1 error and 4 applied overrides. Fix the errors by editing the overrides file by hand, as review.md describes; applied overrides need nothing.",
   );
   assert.equal(document.getElementById("storage-notice").hidden, true);
   assert.equal(text(document.getElementById("save-picks")), "Save picks file");
@@ -182,6 +184,43 @@ test("a re-searched entry is shown, offers Keep and starts on it", () => {
   assert.equal(only.classList.contains("decided"), true);
 });
 
+test("a suspect-exact entry starts undecided, and its one candidate can be picked", () => {
+  const data = sampleData();
+  data.entries = [
+    {
+      kind: "suspect-exact",
+      medium: "film",
+      title: "Placeholder Film Seven",
+      rows: ["2010/seen.txt:16"],
+      detail: "one exact title, held: no release date",
+      candidates: [
+        candidate({ title: "Placeholder Film Seven", id: "1000016" }),
+      ],
+    },
+  ];
+  const storage = memoryStorage();
+  const { document } = renderPage(review, data, storage);
+  const only = section(document, 0);
+  assert.equal(
+    text(only.querySelector(".entry-meta")),
+    "Kind: suspect-exact, medium: film",
+  );
+  const radios = [...only.querySelectorAll("input[type=radio]")];
+  assert.deepEqual(
+    radios.map((radio) => radio.value),
+    ["candidate-0", "typed", "none"],
+  );
+  assert.equal(only.querySelector("input[type=radio]:checked"), null);
+  assert.equal(only.classList.contains("decided"), false);
+  choose(document, 0, "candidate-0");
+  assert.deepEqual(stored(storage), {
+    "film\u0000Placeholder Film Seven\u00002010/seen.txt:16": {
+      tmdb_id: "1000016",
+    },
+  });
+  assert.equal(only.classList.contains("decided"), true);
+});
+
 test("every input has a label, and each entry's choices share a fieldset", () => {
   const document = sample();
   for (const input of document.querySelectorAll("input")) {
@@ -223,6 +262,13 @@ test("a page whose data cannot be read says so and renders nothing else", () => 
   );
   assert.equal(text(document.getElementById("entries")), "");
   assert.equal(text(document.getElementById("progress")), "");
+});
+
+test("a page whose data names another schema says it cannot be read", () => {
+  const data = { ...sampleData(), schema: 2 };
+  const { document } = renderPage(review, data, memoryStorage());
+  assert.equal(document.getElementById("unreadable").hidden, false);
+  assert.equal(document.querySelectorAll("section.entry").length, 0);
 });
 
 test("boot renders a page whose window carries the document", () => {

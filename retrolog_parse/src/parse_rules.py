@@ -109,7 +109,7 @@ class Override:
 
 @dataclass(frozen=True)
 class DateRules:
-    """How folder names and words in a line date an entry."""
+    """How folder names and words in a file name date an entry."""
 
     two_year_folder: re.Pattern[str]
     one_year_folder: re.Pattern[str]
@@ -447,7 +447,7 @@ def load_rules(data: bytes) -> Rules:
 def rating_for_code(rules: Rules, code: str) -> RatingKey | None:
     """The rating key a letter code means, or None when the code is not a known one.
 
-    A code is one letter (``"K"``), or two different letters joined by the split
+    A code is one letter (``"k"``), or two different letters joined by the split
     separator (``"k/o"`` gives ``"3/2"``); case is ignored.
     """
     parts = code.lower().split(rules.split_separator)

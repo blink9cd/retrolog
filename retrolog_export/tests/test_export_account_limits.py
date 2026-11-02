@@ -8,6 +8,7 @@ The property test mutates a real export's bytes and holds that only an
 
 from __future__ import annotations
 
+import csv
 import io
 import sys
 import tempfile
@@ -21,7 +22,7 @@ from hypothesis import strategies as st
 
 _TESTS = Path(__file__).resolve().parent
 _TOOL = _TESTS.parent
-# The tool's own src/ first, then resolve's, parse's and the survey's: the order
+# The tool's own src/ first, then resolve's, parse's, and the survey's: the order
 # retrolog_export.SOURCE_DIRS puts them on sys.path.
 sys.path[:0] = [
     str(_TOOL / "src"),
@@ -32,8 +33,13 @@ sys.path[:0] = [
     str(_TOOL),
 ]
 import export_account  # noqa: E402 - after the sys.path inserts above
-from export_fixtures import account_csv  # noqa: E402 - after the sys.path inserts
-from export_types import FilmKey  # noqa: E402 - after the sys.path inserts above
+from export_fixtures import (  # noqa: E402 - after the sys.path inserts above
+    LOGGED_HEADER,
+    account_csv,
+    csv_text,
+    write_account_folder,
+)
+from export_types import Account, FilmKey  # noqa: E402 - after the sys.path inserts
 
 # The end-of-central-directory record's signature, and its fields' offsets in it
 # (APPNOTE 4.3.16): the entries on this disk, the entries in all, the directory size.
@@ -51,7 +57,7 @@ def _zip_bytes(members: dict[str, str]) -> bytes:
     return buffer.getvalue()
 
 
-# A small but real export: two of the four files, a subfolder file and another file.
+# A small but real export: two of the four files, a subfolder file, and another file.
 _EXPORT = _zip_bytes(
     {
         "watched.csv": account_csv([("Metropolis", "1927")]),
@@ -90,8 +96,8 @@ class ArchiveLimitTest(_ZipCase):
     def test_an_archive_at_the_size_limit_is_read(self) -> None:
         self.path.write_bytes(_EXPORT)
         with mock.patch.object(export_account, "ARCHIVE_LIMIT", len(_EXPORT)):
-            films = export_account.read_account(self.path)
-        self.assertIn(FilmKey("metropolis", 1927), films)
+            account = export_account.read_account(self.path)
+        self.assertIn(FilmKey("metropolis", 1927), account.watched)
 
     def test_the_limits_leave_room_for_a_real_export(self) -> None:
         self.assertGreaterEqual(export_account.ARCHIVE_LIMIT, 4 * 32 * 1024 * 1024)
@@ -107,7 +113,8 @@ class MemberLimitTest(_ZipCase):
     def test_the_member_limit_itself_is_read(self) -> None:
         self.path.write_bytes(_EXPORT)
         with mock.patch.object(export_account, "MAX_MEMBERS", 4):
-            self.assertEqual(len(export_account.read_account(self.path)), 2)
+            account = export_account.read_account(self.path)
+        self.assertEqual(len(account.watched | account.logged), 2)
 
     def test_a_directory_over_its_limit_is_refused_unopened(self) -> None:
         # zipfile reads entries until the directory's bytes run out, not up to the
@@ -156,6 +163,42 @@ class MemberLimitTest(_ZipCase):
 
 
 # Up to eight byte overwrites anywhere in the export, then an optional cut.
+# Longer than csv's default field limit of 131072 characters.
+_LONG_REVIEW = "x" * 200_000
+
+
+class CsvFieldLimitTest(unittest.TestCase):
+    def test_a_review_past_the_default_field_limit_is_read(self) -> None:
+        reviews = csv_text(
+            [{"Name": "Metropolis", "Year": "1927", "Review": _LONG_REVIEW}],
+            (*LOGGED_HEADER, "Review"),
+        )
+        with tempfile.TemporaryDirectory() as folder:
+            path = write_account_folder(Path(folder), {"reviews.csv": reviews})
+            account = export_account.read_account(path)
+        self.assertIn(FilmKey("metropolis", 1927), account.logged)
+
+    def test_the_limit_is_raised_inside_and_restored_after(self) -> None:
+        previous = csv.field_size_limit()
+        with export_account.csv_field_limit():
+            self.assertEqual(csv.field_size_limit(), export_account.MEMBER_LIMIT)
+        self.assertEqual(csv.field_size_limit(), previous)
+
+    def test_the_limit_is_restored_when_the_body_raises(self) -> None:
+        previous = csv.field_size_limit()
+        with (
+            self.assertRaises(KeyError),
+            export_account.csv_field_limit(),
+        ):
+            raise KeyError("raised inside")
+        self.assertEqual(csv.field_size_limit(), previous)
+
+    def test_the_parse_leaves_the_limit_as_it_found_it(self) -> None:
+        previous = csv.field_size_limit()
+        export_account.parse_account_csv("Name,Year\nMetropolis,1927\n")
+        self.assertEqual(csv.field_size_limit(), previous)
+
+
 _MUTATIONS = st.lists(
     st.tuples(st.integers(0, len(_EXPORT) - 1), st.integers(0, 255)), max_size=8
 )
@@ -179,11 +222,11 @@ class ReadAccountPropertyTest(unittest.TestCase):
             path = Path(folder) / "letterboxd-export.zip"
             path.write_bytes(bytes(data[:cut]))
             try:
-                films = export_account.read_account(path)
+                account = export_account.read_account(path)
             except export_account.AccountError as error:
                 self.assertNotIn(folder, str(error))
                 return
-        self.assertIsInstance(films, frozenset)
+        self.assertIsInstance(account, Account)
 
 
 if __name__ == "__main__":

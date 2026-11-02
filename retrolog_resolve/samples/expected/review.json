@@ -9,6 +9,7 @@
     "override-mismatch": 1,
     "override-unused": 1,
     "re-searched": 1,
+    "suspect-exact": 1,
     "variant": 1
   },
   "entries": [
@@ -148,6 +149,27 @@
         "2010/seen.txt:7"
       ],
       "title": "Placeholder Film One"
+    },
+    {
+      "candidates": [
+        {
+          "creator": "Director Ten",
+          "id": "1000016",
+          "isbn13": "",
+          "original_title": "Placeholder Film Seven",
+          "title": "Placeholder Film Seven",
+          "votes": 0,
+          "year": null
+        }
+      ],
+      "detail": "one exact title, held: no release date; 0 votes, under the floor of 1",
+      "error": false,
+      "kind": "suspect-exact",
+      "medium": "film",
+      "rows": [
+        "2010/seen.txt:16"
+      ],
+      "title": "Placeholder Film Seven"
     },
     {
       "candidates": [

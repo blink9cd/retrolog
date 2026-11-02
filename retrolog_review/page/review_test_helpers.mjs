@@ -1,6 +1,6 @@
 // Shared scaffolding for the review page suites.
 //
-// review_storage.js and review.js are CLASSIC scripts with no exports, so
+// review_storage.js and review.js are classic scripts with no exports, so
 // they are run here the way a browser runs them: compiled as scripts, in page
 // order, each under its own file name so node's coverage counts it as itself.
 // review.js's namespace is then read off the global object. In node there is

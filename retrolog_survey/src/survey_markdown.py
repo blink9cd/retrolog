@@ -3,14 +3,18 @@
 The input is the dictionary `survey_report.build_report` returns. Every count table in
 a group (a mapping of names to numbers) is shown as a two-column table, in the order
 the report holds them, so a table added to the report appears here without a change.
-The remaining sections -- images, conversions, samples and errors -- are lists.
+The remaining sections (images, conversions, samples and errors) are lists.
 
 The output quotes real text from the surveyed files: it is as private as they are.
 That text, and every name taken from a file (paths, fonts, styles, error reasons), is
 untrusted, so none of it is written raw: `_escape` backslash-escapes the characters
-that would start Markdown or HTML markup or end a table cell, `_code` wraps a path in
+that could break the layout (`MARKUP`), `_code` wraps a path in
 a code span whose fence is longer than any backtick run inside it, and both replace a
 line break with a visible mark so one value always stays on one line.
+
+`counted` is public because probe's report counts the same way and imports it, and
+`LINE_BREAK`, `BREAK_MARK`, and `MARKUP` because parse's Markdown cells escape by the
+same rules, so each rule lives here once.
 """
 
 from __future__ import annotations
@@ -23,25 +27,30 @@ _SECTIONS = ("images", "conversions", "samples", "errors")
 _NONE = "None."
 _CONVERTERS = ("textutil", "libreoffice")
 # Every line break Python's str.splitlines knows, CRLF first so it counts once.
-_LINE_BREAK = re.compile("\r\n|[\r\n\v\f\x1c\x1d\x1e\x85\u2028\u2029]")
-_BREAK_MARK = "\N{DOWNWARDS ARROW WITH CORNER LEFTWARDS}"
+LINE_BREAK = re.compile("\r\n|[\r\n\v\f\x1c\x1d\x1e\x85\u2028\u2029]")
+BREAK_MARK = "\N{DOWNWARDS ARROW WITH CORNER LEFTWARDS}"
 # What could change the document's structure: a backslash (the escape itself), a
 # backtick (a code span), angle brackets (HTML), a pipe (the end of a table cell) and
 # the "(" of an inline link's "](". Emphasis characters and lone square brackets are
 # left alone: they can restyle a word but not break a line, a list or a table, and the
 # run annotations ("[#00B050]") stay readable.
-_MARKUP = re.compile(r"([\\`<>|]|(?<=\])\()")
+MARKUP = re.compile(r"([\\`<>|]|(?<=\])\()")
 _BACKTICKS = re.compile("`+")
+
+
+def counted(count: int, noun: str) -> str:
+    """``count`` and ``noun``, the noun plural unless the count is exactly one."""
+    return f"{count} {noun}" if count == 1 else f"{count} {noun}s"
 
 
 def _one_line(text: str) -> str:
     """``text`` with each line break replaced by a visible mark."""
-    return _LINE_BREAK.sub(_BREAK_MARK, text)
+    return LINE_BREAK.sub(BREAK_MARK, text)
 
 
 def _escape(value: object) -> str:
     """``value`` as plain Markdown text: on one line, with markup characters escaped."""
-    return _MARKUP.sub(r"\\\1", _one_line(str(value)))
+    return MARKUP.sub(r"\\\1", _one_line(str(value)))
 
 
 def _code(value: object) -> str:

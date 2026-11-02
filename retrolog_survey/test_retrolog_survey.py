@@ -1,11 +1,11 @@
 """Aggregator: imports every tests/ suite so one coverage run measures them as one unit.
 
-The floor below is deliberately RESTATED, not derived. A floor computed from discovery
+The floor below is deliberately restated, not derived. A floor computed from discovery
 compares discovery against itself and passes for an empty suite, which is the defect
-this guard exists to catch. What IS derived is the file SET: `_tests_by_module`
+this guard exists to catch. What is derived is the file set: `_tests_by_module`
 flattens the suite `load_tests` actually folds into the real run into a per-file count,
 and `GroupedSuiteDiscoveryTest.test_grouped_suite_meets_its_own_per_file_floor` checks
-that count's key set against `_MIN_TESTS_BY_FILE`'s -- so a new tests/test_*.py arrives
+that count's key set against `_MIN_TESTS_BY_FILE`'s, so a new tests/test_*.py arrives
 unfloored loudly, not silently absorbed into a combined total.
 
 ``_SUITE_DIR`` is the discovery root for ``_grouped_suite()``, with
@@ -40,6 +40,7 @@ _MIN_TESTS_BY_FILE: dict[str, int] = {
     "test_report_build.py": 13,
     "test_cli.py": 28,
     "test_cli_usage.py": 14,
+    "test_shared.py": 4,
 }
 # This module's OWN tests: the guards below, which are the only reason the file exists.
 # Kept apart from the grouped floors rather than summed into one total, so no amount of
@@ -78,7 +79,7 @@ def _tests_by_module(suite: unittest.TestSuite) -> dict[str, int]:
 
 
 class GroupedSuiteDiscoveryTest(unittest.TestCase):
-    """Fail loudly when THIS MODULE's real test load is missing a grouped suite --
+    """Fail loudly when this module's real test load is missing a grouped suite,
     not merely when `tests/`, read directly off disk, is missing one.
 
     A guard that called `_grouped_suite()` directly would share its subject's failure
@@ -99,7 +100,7 @@ class GroupedSuiteDiscoveryTest(unittest.TestCase):
             own_found,
             _OWN_GUARD_TESTS,
             f"this module contributed {own_found} of its own tests, expected exactly "
-            f"{_OWN_GUARD_TESTS} -- a guard above may have been deleted, or a new one "
+            f"{_OWN_GUARD_TESTS}; a guard above may have been deleted, or a new one "
             f"added without raising _OWN_GUARD_TESTS",
         )
         # Derived from the per-file floors rather than restated as a second total: that
@@ -110,7 +111,7 @@ class GroupedSuiteDiscoveryTest(unittest.TestCase):
             grouped_found,
             grouped_floor,
             f"loading this module yielded {grouped_found} grouped tests, expected at "
-            f"least {grouped_floor} -- load_tests may have been removed or renamed, "
+            f"least {grouped_floor}; load_tests may have been removed or renamed, "
             f"silently dropping a tests/ suite from the real run",
         )
 
@@ -133,7 +134,7 @@ class GroupedSuiteDiscoveryTest(unittest.TestCase):
                 found,
                 floor,
                 f"tests/{filename} yielded {found} tests, expected at least "
-                f"{floor} -- a test may have been removed from it",
+                f"{floor}; a test may have been removed from it",
             )
 
 

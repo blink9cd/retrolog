@@ -1,3 +1,6 @@
 tmdbID,Title,Year,Directors,Rating,WatchedDate,Rewatch,Tags,Review
 ,Placeholder Film Three,,,,2010-06-07,,retrolog,
-,Placeholder Film Seven,1960,,1.5,2010-08-09,,"retrolog-low, retrolog",
+1000005,Placeholder Film Five,1995,,3,2010-07-08,,retrolog,
+1000012,Placeholder Film Twelve,1974,,,2019-03-04,true,"retrolog-high, retrolog","Retrolog review. Original watch: 2019. Original rating: high.
+
+Better the second time."

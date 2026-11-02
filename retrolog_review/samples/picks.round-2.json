@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "review_sha256": "80310d72a806b120f98d67c850b4e211032f8aca44a06b4828ef6e2241c547a0",
+  "picks": [
+    {
+      "medium": "book",
+      "title": "Placeholder Book Four",
+      "rows": ["2010/read.txt:5"],
+      "answer": {
+        "ol_work": "/works/OL1000014W"
+      }
+    }
+  ]
+}

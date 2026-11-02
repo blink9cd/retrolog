@@ -138,6 +138,7 @@ def config_toml(
     rating_tags: Mapping[str, TomlValue] | None = None,
     rating_names: Mapping[str, TomlValue] | None = None,
     cutoff: Mapping[str, TomlValue] | None = None,
+    omit_films: Sequence[Mapping[str, TomlValue]] = (),
     omit: Sequence[str] = (),
     head: str = "schema = 1\n",
     **letterboxd: TomlValue,
@@ -145,8 +146,9 @@ def config_toml(
     """An export config of ``head`` and a ``[letterboxd]`` table.
 
     ``letterboxd`` replaces or adds plain keys of the table; ``omit`` drops any key
-    of it, ``ratings`` included. ``rating_tags``, ``rating_names`` and ``cutoff`` are
-    written only when given.
+    of it, ``ratings`` included. ``rating_tags``, ``rating_names``, and ``cutoff`` are
+    written only when given, and ``omit_films`` as one ``[[letterboxd.omit]]`` table
+    each.
     """
     plain = {**_LETTERBOXD_DEFAULTS, **letterboxd}
     text = head + _table(
@@ -162,6 +164,10 @@ def config_toml(
         text += _table("letterboxd.rating_names", rating_names)
     if cutoff is not None:
         text += _table("letterboxd.cutoff", cutoff)
+    for entry in omit_films:
+        text += _table("letterboxd.omit", entry).replace(
+            "[letterboxd.omit]", "[[letterboxd.omit]]", 1
+        )
     return text.encode()
 
 
@@ -186,6 +192,38 @@ def account_csv(
             "Letterboxd URI": "https://boxd.it/placeholder",
         }
         for name, year in films
+    ]
+    return csv_text(rows, header)
+
+
+# The columns of Letterboxd's diary.csv: watched.csv's, then the entry's own. Its
+# reviews.csv adds a Review column too, which the reader ignores like the others.
+LOGGED_HEADER = (
+    *ACCOUNT_HEADER,
+    "Rating",
+    "Rewatch",
+    "Tags",
+    "Watched Date",
+)
+
+
+def logged_csv(
+    entries: Sequence[tuple[str, str, str, str]],
+    header: Sequence[str] = LOGGED_HEADER,
+) -> str:
+    """A diary.csv or reviews.csv of ``(Name, Year, Tags, Watched Date)`` entries."""
+    rows = [
+        {
+            "Date": "2020-01-02",
+            "Name": name,
+            "Year": year,
+            "Letterboxd URI": "https://boxd.it/placeholder",
+            "Rating": "3",
+            "Rewatch": "",
+            "Tags": tags,
+            "Watched Date": watched,
+        }
+        for name, year, tags, watched in entries
     ]
     return csv_text(rows, header)
 

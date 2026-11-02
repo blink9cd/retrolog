@@ -231,7 +231,7 @@ def _split_comment(text: str, rules: Rules) -> tuple[str, str]:
 
 
 def _progress(text: str, rules: Rules) -> str | None:
-    """The title of a progress note ("half way through"), or None for any other text."""
+    """The title of a progress note ("halfway through"), or None for any other text."""
     match = rules.progress.search(text)
     return None if match is None else match["title"] or ""
 

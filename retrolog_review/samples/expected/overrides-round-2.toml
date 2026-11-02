@@ -1,0 +1,36 @@
+schema = 1
+
+[[overrides]]
+medium = "book"
+title = "Placeholder Book Five"
+file = "2010/read.txt"
+line = 6
+unresolvable = true
+
+[[overrides]]
+medium = "film"
+title = "Placeholder Film Seven"
+file = "2010/seen.txt"
+line = 16
+tmdb_id = "1000016"
+
+[[overrides]]
+medium = "film"
+title = "Placeholder Film Three"
+file = "2010/seen.txt"
+line = 11
+tmdb_id = "1000020"
+
+[[overrides]]
+medium = "film"
+title = "Placeholder Film Two"
+file = "2010/seen.txt"
+line = 10
+tmdb_id = "1000005"
+
+[[overrides]]
+medium = "book"
+title = "Placeholder Book Four"
+file = "2010/read.txt"
+line = 5
+ol_work = "/works/OL1000014W"

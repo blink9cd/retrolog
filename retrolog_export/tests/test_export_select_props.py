@@ -28,8 +28,9 @@ sys.path[:0] = [
 ]
 import export_account  # noqa: E402 - after the sys.path inserts above
 import export_select  # noqa: E402 - after the sys.path inserts above
-from export_strategies import resolved_rows  # noqa: E402 - after the sys.path inserts
+from export_strategies import accounts, resolved_rows  # noqa: E402 - after the inserts
 from export_types import (  # noqa: E402 - after the sys.path inserts above
+    Account,
     Cutoff,
     FilmKey,
     ResolvedRow,
@@ -52,7 +53,11 @@ class SelectPropertyTest(unittest.TestCase):
     @given(st.lists(resolved_rows(), max_size=30, unique_by=lambda row: row.where))
     def test_fuzz_select(self, rows: list[ResolvedRow]) -> None:
         chosen = export_select.select(
-            rows, cutoff=None, account=frozenset(), on_service=_never
+            rows,
+            cutoff=None,
+            account=Account(),
+            on_service=_never,
+            watched_dates=True,
         )
         sent = [row.where for film in chosen.films for row in film.rows]
         held = [
@@ -76,8 +81,9 @@ class SelectPropertyTest(unittest.TestCase):
         chosen = export_select.select(
             rows,
             cutoff=None,
-            account=frozenset(account),
+            account=Account(logged=frozenset(account), imported=frozenset(account)),
             on_service=export_account.on_service,
+            watched_dates=True,
         )
         sent = [row for film in chosen.films for row in film.rows]
         held = {
@@ -92,7 +98,7 @@ class SelectPropertyTest(unittest.TestCase):
             if entry.kind == "on-service"
             for where in entry.rows
         ]
-        # every row is sent, held or skipped, exactly once
+        # every row is sent, held, or skipped, exactly once
         placed = Counter(row.where for row in sent) + Counter(held) + Counter(skipped)
         self.assertEqual(placed, Counter(row.where for row in rows))
         # and no sent row, by any title it carries, would make a held row read as on
@@ -128,8 +134,9 @@ class SelectPropertyTest(unittest.TestCase):
         chosen = export_select.select(
             rows,
             cutoff=cutoff,
-            account=account,
+            account=Account(logged=account, imported=account),
             on_service=export_account.on_service,
+            watched_dates=True,
         )
         placed = Counter(
             row.where for film in chosen.films for row in film.rows
@@ -143,6 +150,45 @@ class SelectPropertyTest(unittest.TestCase):
         self.assertTrue(all(count == 1 for count in placed.values()))
         firsts = [export_select.row_order(film.rows[0]) for film in chosen.films]
         self.assertEqual(firsts, sorted(firsts))
+
+    @settings(deadline=None)
+    @given(
+        st.lists(resolved_rows(), max_size=30, unique_by=lambda row: row.where),
+        accounts(),
+        st.booleans(),
+    )
+    def test_every_account_class_places_each_row_once(
+        self, rows: list[ResolvedRow], account: Account, watched_dates: bool
+    ) -> None:
+        chosen = export_select.select(
+            rows,
+            cutoff=None,
+            account=account,
+            on_service=export_account.on_service,
+            watched_dates=watched_dates,
+        )
+        # every row is sent, held, skipped, or dropped on a diary date, exactly once
+        placed = Counter(
+            row.where for film in chosen.films for row in film.rows
+        ) + Counter(
+            where
+            for entry in chosen.review
+            if entry.kind.startswith("held-")
+            or entry.kind in ("on-service", "same-date")
+            for where in entry.rows
+        )
+        self.assertEqual(placed, Counter(row.where for row in rows))
+        # a film sent without stars is exactly one listed as logged
+        logged = [
+            set(entry.rows)
+            for entry in chosen.review
+            if entry.kind == "logged-no-stars"
+        ]
+        for film in chosen.films:
+            sent_rows = {row.where for row in film.rows}
+            self.assertEqual(film.withhold_rating, sent_rows in logged)
+        if not watched_dates:
+            self.assertNotIn("same-date", [entry.kind for entry in chosen.review])
 
 
 if __name__ == "__main__":

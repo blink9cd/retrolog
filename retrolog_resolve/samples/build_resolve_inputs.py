@@ -81,6 +81,10 @@ _FILMS = (
     ("Placeholder Film Six", 13),  # two exact titles, 30x the votes: most-voted
     ("Placeholder Story II", 14),  # only "Placeholder Story 2" matches: variant
     ("The Placeholder Hour", 15),  # found by searching again unarticled: re-searched
+    (
+        "Placeholder Film Seven",
+        16,
+    ),  # one exact title, undated and unvoted: suspect-exact
 )
 # The sample's own overrides, after the example file's four.
 _SAMPLE_OVERRIDES = """
@@ -170,8 +174,24 @@ def _film_answers() -> dict[str, object]:
         return fx.tmdb_credits_payload(fx.tmdb_crew(name))
 
     return {
+        # The details of the two override ids the sample applies: each row takes its
+        # TMDb titles from them, and its empty year from the release date.
+        resolve_films.details_url("1000001"): fx.tmdb_result(
+            1000001, "Metropolis", release_date="1927-01-10"
+        ),
+        resolve_films.details_url("1000002"): fx.tmdb_result(
+            1000002,
+            "Placeholder Film One",
+            original_title="Film Un Factice",
+            release_date="1988-04-05",
+        ),
         resolve_films.search_url("Placeholder Film One"): search(
-            fx.tmdb_result(1000003, "Placeholder Film One", release_date="2001-02-03")
+            fx.tmdb_result(
+                1000003,
+                "Placeholder Film One",
+                release_date="2001-02-03",
+                vote_count=320,
+            )
         ),
         resolve_films.search_url("Placeholder Film Two"): search(
             fx.tmdb_result(1000004, "Placeholder Film Two", release_date="1999-01-01"),
@@ -187,6 +207,7 @@ def _film_answers() -> dict[str, object]:
                 "Placeholder Film Five",
                 original_title="Film Cinq",
                 release_date="2005-06-07",
+                vote_count=75,
             )
         ),
         # Two exact titles, the first with thirty times the second's votes, so the
@@ -234,6 +255,12 @@ def _film_answers() -> dict[str, object]:
             fx.tmdb_result(1000015, "Placeholder Hour", release_date="2002-09-10"),
         ),
         resolve_films.credits_url("1000015"): credits("Director Nine"),
+        # One exact title, but no release date and no votes: held for review, with its
+        # director listed like an ambiguous film's.
+        resolve_films.search_url("Placeholder Film Seven"): search(
+            fx.tmdb_result(1000016, "Placeholder Film Seven", vote_count=0)
+        ),
+        resolve_films.credits_url("1000016"): credits("Director Ten"),
     }
 
 

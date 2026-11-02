@@ -4,7 +4,7 @@ Text files written over many years by different machines carry no record of thei
 encoding, so `detect_encoding` guesses one from the bytes alone. The rule, in order:
 
 1. A byte-order mark decides: the UTF-8 BOM gives ``utf-8-sig`` and either UTF-16 BOM
-   gives ``utf-16`` -- provided the whole file decodes that way. Bytes that merely start
+   gives ``utf-16``, provided the whole file decodes that way. Bytes that merely start
    like a BOM (a truncated or damaged file) fall through to the steps below.
 2. If every byte is below 0x80, the file is ``ascii``.
 3. If the bytes decode as strict UTF-8, the file is ``utf-8``. Random 8-bit text almost

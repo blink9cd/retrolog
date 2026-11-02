@@ -1,18 +1,26 @@
 """One resolve row as one row of a Letterboxd import file.
 
 Every row holds every one of ``COLUMNS``, in that order, and a cell with no value is
-empty. A row is sent by tmdbID only
-when resolve settled its film, so a ``not-found`` or ``unresolvable`` row goes by
-Title and Year and the import preview matches it. The ratings, tags, WatchedDate switch
-and review note all come from the operator's checked ``LetterboxdConfig``; this module
-holds no value of the operator's own.
+empty. A row is sent by tmdbID only when resolve settled its film, so a
+``not-found`` or ``unresolvable`` row goes by Title and Year and the import preview
+matches it. The ratings, tags, WatchedDate switch, and review note all come from the
+operator's checked ``LetterboxdConfig``; this module holds no value of the operator's
+own.
 """
 
 from __future__ import annotations
 
-import string
-
-from export_types import SENT_BY_ID, LetterboxdConfig, ResolvedRow
+from export_types import (
+    MAX_HALF_STARS,
+    MIN_HALF_STARS,
+    NOTE_DATE_FIELDS,
+    SENT_BY_ID,
+    SENTENCE_FIELDS,
+    LetterboxdConfig,
+    ResolvedRow,
+    template_names_any,
+)
+from resolve_columns import CREATOR_JOINER
 
 COLUMNS = (
     "tmdbID",
@@ -25,26 +33,20 @@ COLUMNS = (
     "Tags",
     "Review",
 )
-# Stars are kept doubled: 1 is half a star, 10 is five stars.
-_MIN_HALF_STARS, _MAX_HALF_STARS = 1, 10
-# resolve joins a film's directors with " & "; Letterboxd's Directors column takes
-# commas.
-_RESOLVE_JOINER, _DIRECTORS_JOINER = " & ", ", "
+# resolve joins a film's directors with its CREATOR_JOINER; Letterboxd's Directors
+# column takes commas.
+_DIRECTORS_JOINER = ", "
 _TAGS_JOINER = ", "
 # The note sits above the comment, a blank line between them; the rating sentence
 # follows the note on its line.
 _NOTE_JOINER = "\n\n"
 _SENTENCE_JOINER = " "
-# The note's fields that name the watch's date; an undated row has neither to give.
-_DATE_FIELDS = frozenset({"year", "date"})
-# The sentence's one field, the rating key's word.
-_RATING_FIELDS = frozenset({"rating"})
 
 
 def stars(half_stars: int) -> str:
     """Half stars as Letterboxd writes a rating: 7 is ``"3.5"``, 10 is ``"5"``."""
-    if not _MIN_HALF_STARS <= half_stars <= _MAX_HALF_STARS:
-        raise ValueError(f"half stars must be {_MIN_HALF_STARS} to {_MAX_HALF_STARS}")
+    if not MIN_HALF_STARS <= half_stars <= MAX_HALF_STARS:
+        raise ValueError(f"half stars must be {MIN_HALF_STARS} to {MAX_HALF_STARS}")
     whole, half = divmod(half_stars, 2)
     return f"{whole}.5" if half else str(whole)
 
@@ -74,7 +76,7 @@ def _note(row: ResolvedRow, config: LetterboxdConfig) -> str:
     belongs.
     """
     if row.date is None:
-        if _names_any(config.review_note, _DATE_FIELDS):
+        if template_names_any(config.review_note, NOTE_DATE_FIELDS):
             return ""
         return config.review_note.format()
     return config.review_note.format(year=str(row.date.year), date=row.date.isoformat())
@@ -93,14 +95,9 @@ def _sentence(row: ResolvedRow, config: LetterboxdConfig) -> str:
     sentence = config.review_note_rating
     if not sentence or not row.rating_raw:
         return ""
-    if not _names_any(sentence, _RATING_FIELDS):
+    if not template_names_any(sentence, SENTENCE_FIELDS):
         return sentence.format()
     return sentence.format(rating=config.rating_names[row.rating_raw])
-
-
-def _names_any(template: str, fields: frozenset[str]) -> bool:
-    """Whether ``template`` holds a field named in ``fields``."""
-    return any(field in fields for _, field, _, _ in string.Formatter().parse(template))
 
 
 def _tags(row: ResolvedRow, config: LetterboxdConfig) -> str:
@@ -111,19 +108,24 @@ def _tags(row: ResolvedRow, config: LetterboxdConfig) -> str:
     return _TAGS_JOINER.join(dict.fromkeys(ordered))
 
 
-def row_cells(row: ResolvedRow, config: LetterboxdConfig) -> tuple[str, ...]:
+def row_cells(
+    row: ResolvedRow, config: LetterboxdConfig, withhold_rating: bool = False
+) -> tuple[str, ...]:
     """One cell per ``COLUMNS`` entry, in that order.
 
     A rated row's key must be in ``config.half_stars``: ``check_keys`` refuses the run
-    before any row gets here otherwise.
+    before any row gets here otherwise. ``withhold_rating`` leaves the Rating cell
+    empty and nothing else, for a film the owner already logged: its rating tag
+    and the review's rating sentence still carry what the lists said.
     """
     sent_by_id = row.status in SENT_BY_ID and row.tmdb_id
+    rated = row.rating_raw and not withhold_rating
     return (
         row.tmdb_id if sent_by_id else "",
         row.title,
         "" if row.year is None else str(row.year),
-        row.creator.replace(_RESOLVE_JOINER, _DIRECTORS_JOINER),
-        stars(config.half_stars[row.rating_raw]) if row.rating_raw else "",
+        row.creator.replace(CREATOR_JOINER, _DIRECTORS_JOINER),
+        stars(config.half_stars[row.rating_raw]) if rated else "",
         row.date.isoformat() if config.watched_date and row.date else "",
         "true" if row.rewatch else "",
         _tags(row, config),

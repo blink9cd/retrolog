@@ -270,6 +270,6 @@ def real_run(
 
     Raises ``subprocess.TimeoutExpired`` once ``timeout`` passes, after killing the
     converter's whole process tree. Not covered by the unit tests, which replace it
-    wholesale with a fake runner; the macOS live smoke test exercises it against textutil.
+    wholesale with a fake runner; the macOS live test exercises it against textutil.
     """
     return bounded_run.run_bounded_bytes(argv, timeout=timeout).returncode

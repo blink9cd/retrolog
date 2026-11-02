@@ -1,7 +1,7 @@
 """Survey each file the walk found, and gather the results into one report.
 
-`survey_file` reads one `FileEntry` -- a text file, a Word .docx, or a .doc through a
-converted copy -- and returns a `FileSurvey`: its lines, each classified and described,
+`survey_file` reads one `FileEntry` (a text file, a Word .docx, or a .doc through a
+converted copy) and returns a `FileSurvey`: its lines, each classified and described,
 and counts of every formatting signal it uses. `build_report` groups those surveys
 into the report dictionary that is written as ``report.json`` (its layout is
 ``SCHEMA_VERSION``), and `render_markdown` turns that dictionary into ``report.md`` for
@@ -186,8 +186,12 @@ def conversion_entry(
     return entry
 
 
-def _preferred(results: Sequence[ConversionResult]) -> ConversionResult | None:
-    """The result whose output is surveyed: LibreOffice's when it worked, else textutil's."""
+def preferred(results: Sequence[ConversionResult]) -> ConversionResult | None:
+    """The result whose output is surveyed: LibreOffice's when it worked, else textutil's.
+
+    None when neither worked. Public so retrolog_parse reads the same output the
+    survey reported on; ``compare_converters`` lists textutil first, LibreOffice last.
+    """
     return next((r for r in reversed(results) if r.status == "ok"), None)
 
 
@@ -220,7 +224,7 @@ def _survey_doc(base: FileSurvey, path: Path, ctx: SurveyContext) -> FileSurvey:
             timeout=ctx.timeout,
         )
         conversion = conversion_entry(base.rel_path, results)
-        chosen = _preferred(results)
+        chosen = preferred(results)
         if chosen is None:
             return replace(base, conversion=conversion, error=_NO_CONVERSION)
         output = converted_path(workdir, path, chosen.converter)

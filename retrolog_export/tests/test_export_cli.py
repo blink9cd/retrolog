@@ -1,4 +1,4 @@
-"""Tests for the retrolog_export command line: what it reads, writes and returns.
+"""Tests for the retrolog_export command line: what it reads, writes, and returns.
 
 Each test runs ``main`` end to end on a temporary resolve folder, account export and
 export config, with a git stand-in, so no test reaches a real repository, a real
@@ -19,7 +19,7 @@ from unittest import mock
 _TESTS = Path(__file__).resolve().parent
 _TOOL = _TESTS.parent
 # Inserted last first, so sys.path reads in retrolog_export.SOURCE_DIRS' order with the
-# tool's own src/ ahead of resolve's, parse's and the survey's.
+# tool's own src/ ahead of resolve's, parse's, and the survey's.
 sys.path.insert(0, str(_TOOL.parent / "retrolog_survey" / "src"))
 sys.path.insert(0, str(_TOOL.parent / "retrolog_parse" / "src"))
 sys.path.insert(0, str(_TOOL.parent / "retrolog_resolve" / "src"))
@@ -32,6 +32,7 @@ import retrolog_export  # noqa: E402 - after the sys.path inserts above
 import survey_guard  # noqa: E402 - retrolog_export puts its folder on sys.path
 from export_fixtures import (  # noqa: E402 - after the sys.path inserts above
     account_csv,
+    logged_csv,
     config_toml,
     TomlValue,
     resolved_row,
@@ -91,10 +92,12 @@ class CleanRunTest(_CliCase):
 
     def test_a_second_run_after_the_import_sends_nothing(self) -> None:
         self.assertEqual(self.main(), EXIT_OK, self.stderr)
-        self.write_account(_ON_ACCOUNT + [("Placeholder Film One", "1999")])
-        write_account_folder(
-            self.account, {"diary.csv": account_csv([("Metropolis", "1927")])}
-        )
+        # The import made a diary entry of each, tagged with the config's "retrolog".
+        imported = [
+            ("Placeholder Film One", "1999", "retrolog", "2010-03-04"),
+            ("Metropolis", "1927", "retrolog", "2010-03-04"),
+        ]
+        write_account_folder(self.account, {"diary.csv": logged_csv(imported)})
         self.assertEqual(self.main(), EXIT_OK, self.stderr)
         self.assertEqual(self.import_names(), [])
         self.assertIn("films sent: 0", self.stdout)
@@ -110,7 +113,14 @@ class CleanRunTest(_CliCase):
             tmdb_title="Placeholder Story 2",
         )
         self.write_rows([sequel])
-        self.write_account([("Placeholder Story 2", "2006")])
+        write_account_folder(
+            self.account,
+            {
+                "diary.csv": logged_csv(
+                    [("Placeholder Story 2", "2006", "retrolog", "")]
+                )
+            },
+        )
         self.assertEqual(self.main(), EXIT_OK, self.stderr)
         self.assertEqual(self.import_names(), [])
         self.assertIn("films sent: 0", self.stdout)
@@ -119,7 +129,7 @@ class CleanRunTest(_CliCase):
     def test_a_zip_account_export_is_read(self) -> None:
         archive = write_account_zip(
             self.base / "export.zip",
-            {"watched.csv": account_csv([("Metropolis", "1927")])},
+            {"reviews.csv": logged_csv([("Metropolis", "1927", "retrolog", "")])},
         )
         self.assertEqual(self.main(account=archive), EXIT_OK, self.stderr)
         self.assertNotIn("Metropolis", self.read("letterboxd-001.csv"))
@@ -272,6 +282,11 @@ class UsageExitTest(_CliCase):
             ["--max-bytes", "1023"],
             ["--max-bytes", "1000001"],
             ["--timeout", "0"],
+            # Regression: socket and subprocess timeouts reject an infinite, a NaN,
+            # or a huge value with a traceback, so resolve's bound holds here too.
+            ["--timeout", "inf"],
+            ["--timeout", "nan"],
+            ["--timeout", "3601"],
             ["--service", "goodreads"],
         ):
             with self.subTest(extra=extra):

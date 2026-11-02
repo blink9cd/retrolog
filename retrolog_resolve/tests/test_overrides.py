@@ -151,6 +151,9 @@ class LoadOverridesTest(unittest.TestCase):
             (_FILM, "tmdb_id", '"12a"'),
             (_FILM, "tmdb_id", "12"),
             (_FILM, "tmdb_id", '"١٢"'),
+            (_FILM, "tmdb_id", '"0603"'),
+            (_FILM, "tmdb_id", '"0"'),
+            (_FILM, "tmdb_id", '"12345678901"'),
         )
         for base, key, value in cases:
             with self.subTest(key=key, value=value):

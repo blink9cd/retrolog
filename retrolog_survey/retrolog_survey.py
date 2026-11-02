@@ -35,6 +35,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 import survey_convert  # noqa: E402 - after the src/ insert
 import survey_guard  # noqa: E402 - after the src/ insert
 import survey_report  # noqa: E402 - after the src/ insert
+from survey_markdown import counted  # noqa: E402 - after the src/ insert
 from survey_walk import walk_source  # noqa: E402 - after the src/ insert
 
 _EXIT_OK, _EXIT_FILE_ERRORS, _EXIT_USAGE = 0, 1, 2
@@ -91,10 +92,11 @@ def build_parser() -> argparse.ArgumentParser:
             "copy of each); LibreOffice is optional, and when it is installed its "
             "conversion is compared with textutil's and preferred. .txt and .docx "
             "files need neither.\n\n"
-            "Run order: run this survey, read report.md, then run the parse step "
-            "that reads report.json.\n\n"
-            "Exit codes: 0 every file surveyed - 1 report written, but one or more "
-            "files could not be surveyed (listed under errors) - 2 bad arguments, "
+            "Run order: run this survey, read report.md and write the rules file "
+            "from it, then run retrolog_parse.\n\n"
+            "Exit codes: 0 means every file was surveyed. 1 means the report was "
+            "written, but one or more files could not be surveyed (listed under "
+            "errors). 2 means bad arguments, "
             "--path is not a directory, --out or the temporary directory was "
             "refused, or the report could not be written."
         ),
@@ -238,8 +240,10 @@ def _summary_lines(report: Mapping[str, object]) -> list[str]:
     groups = report["groups"]
     assert isinstance(groups, list)
     return [
-        f"{_printable(group['group'])}: {sum(group['files'].values())} files, "
-        f"{sum(group['line_kinds'].values())} lines, {len(group['errors'])} errors"
+        f"{_printable(group['group'])}: "
+        f"{counted(sum(group['files'].values()), 'file')}, "
+        f"{counted(sum(group['line_kinds'].values()), 'line')}, "
+        f"{counted(len(group['errors']), 'error')}"
         for group in groups
     ]
 
@@ -279,8 +283,7 @@ def _survey_all(
     """Walk ``--path`` and survey every entry, converting .doc copies in a temp dir.
 
     The temporary directory is the system's, never under ``--path`` or ``--out``, and
-    it is removed before returning, whether the survey succeeded or raised; a failure
-    to remove it is ignored rather than reported, since it would name the path.
+    it is removed before returning, whether the survey succeeded or raised.
     """
     entries = walk_source(
         args.path, group_depth=args.group_depth, exclude=args.exclude or ()

@@ -1,6 +1,6 @@
 # An example export config for retrolog_export. Keep yours next to your notes, never in
 # a repository: a real one names rating codes and a title from your own lists. Every
-# title, key, word and tag below is a made-up example.
+# title, key, word, and tag below is a made-up example.
 #
 # An unknown key, a missing one, or a value of the wrong shape stops the run before
 # anything is written, with a message naming the key and never its value.
@@ -14,10 +14,11 @@ schema = 1
 # Write each dated row's date as its WatchedDate (true), or leave the column empty
 # (false), so the import screen can make diary entries or just mark films watched.
 watched_date = true
-# Tags added to every exported row, such as one that marks the import. Each is 1 to 50
-# characters with no comma, quote, or control character, and starts with "retrolog",
-# so none can collide with a tag the account already uses and the import can be found
-# from its tag pages; any other tag stops the run. [] adds none.
+# Tags added to every exported row, at least one: the next run knows a film an import
+# sent by its tag, so [] stops the run. Each is 1 to 50 characters with no comma,
+# quote, or control character, and starts with "retrolog", so none can collide with a
+# tag the account already uses and the import can be found from its tag pages; any
+# other tag stops the run.
 tags = ["retrolog"]
 # A note added to the Review column, above the row's comment. It may hold {year} and
 # {date}, the watch's year and ISO date ({{ and }} for literal braces), and at most
@@ -67,3 +68,13 @@ review_note_rows = "commented"
 file = "2019/films.txt"
 line = 12
 title = "Placeholder Film Nine"
+
+# Optional: films never sent, one [[letterboxd.omit]] table each, such as a film the
+# import preview showed Letterboxd lacks. Each names a film by the title on its list
+# line (matched ignoring case, spacing, and punctuation) and its year; leave out "year"
+# for a film with no year. Every row of a film one entry names is left out and listed
+# "omitted" in review.md. An entry naming no row, a title with no letter or digit, or a
+# second entry for the same film stops the run, naming the entry by its number.
+[[letterboxd.omit]]
+title = "Placeholder Film Seven"
+year = 1960

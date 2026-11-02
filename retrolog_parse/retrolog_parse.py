@@ -121,10 +121,11 @@ def build_parser() -> argparse.ArgumentParser:
             "need neither.\n\n"
             "Run order: run retrolog_survey first and read its report, write the "
             "rules file, then run this and read review.md.\n\n"
-            "Exit codes: 0 written, no error in the review - 1 written, but the "
-            "review lists an error (read-error, no-medium, rule-file-missing, "
-            "override-mismatch or term-mismatch) - 2 bad arguments, an unreadable or invalid rules "
-            "file, --out or the temporary directory refused, or the output could "
+            "Exit codes: 0 means written, with no error in the review. 1 means "
+            "written, but the review lists an error (read-error, no-medium, "
+            "rule-file-missing, override-mismatch, or term-mismatch). 2 means bad "
+            "arguments, --path missing or not a directory, an unreadable or "
+            "invalid rules file, --out or the temporary directory refused, or the output could "
             "not be written."
         ),
     )

@@ -24,6 +24,7 @@ sys.path.insert(0, str(_TESTS / "fixtures"))
 import resolve_http  # noqa: E402 - after the sys.path inserts above
 import resolve_isbn  # noqa: E402 - after the sys.path inserts above
 import resolve_rows  # noqa: E402 - after the sys.path inserts above
+from resolve_columns import is_tmdb_id  # noqa: E402 - after the sys.path inserts
 from resolve_fixtures import input_row  # noqa: E402 - after the sys.path inserts above
 from resolve_types import InputRow  # noqa: E402 - after the sys.path inserts above
 
@@ -42,6 +43,7 @@ def _resolve(row: InputRow, token: str | None) -> resolve_rows.OutputRow:
         tmdb=resolve_http.tmdb(token) if token else None,
         directors="none",
         vote_ratio=10.0,
+        vote_floor=1,
         research=True,
     )
     return rows[0]
@@ -64,7 +66,7 @@ class LiveTest(unittest.TestCase):
         film = input_row("Metropolis", medium="film", work_year=1927, date="2020-01-01")
         row = _resolve(film, token)
         self.assertEqual(row.cells["resolve_status"], "resolved")
-        self.assertRegex(row.cells["tmdb_id"], r"\A[0-9]+\Z")
+        self.assertTrue(is_tmdb_id(row.cells["tmdb_id"]))
 
 
 if __name__ == "__main__":

@@ -1,11 +1,11 @@
 // The retrolog review page: a section and a choice per title retrolog_resolve
 // could not settle alone, and a button saving the choices as picks.json.
 //
-// A CLASSIC script, not a module: retrolog_review inlines it into a plain
+// A classic script, not a module: retrolog_review inlines it into a plain
 // <script> so the page runs from file://, where a module would be refused. It
 // reads the `review-data` JSON block, keeps each choice in localStorage as it
 // is made (until Forget stored picks removes them), and makes no request of
-// any kind. Fixed copy is in review.html.
+// any kind. The page's fixed text is in review.html.
 // Its helpers are exposed, frozen, as `globalThis.RetrologReview` for the
 // suites; `boot` is the only line that runs on load. The types its JSDoc names
 // (Entry, Answer, Slot and the rest) are declared in review_types.d.ts. The
@@ -13,24 +13,38 @@
 "use strict";
 
 (function (root) {
-  const { storageKey, openStorage, readStored, saveAnswers, forgetAnswers } =
+  const { forgetAnswers, isAnswer, isPlainObject } = root.RetrologStorage;
+  const { loadAnswers, openStorage, saveAnswers, storageKey } =
     root.RetrologStorage;
   // The kinds whose resolve result stands unless the operator changes it.
   const KEEP_KINDS = ["most-voted", "variant", "re-searched", "no-isbn"];
   // NUL cannot occur in a title, so medium, title and row never run together.
   const KEY_SEPARATOR = "\u0000";
-  const ID_KEYS = ["tmdb_id", "ol_work", "isbn13"];
-  const DIGITS = /^\d+$/;
+  // A TMDb id: resolve_columns.TMDB_ID, which a Python test pins this to.
+  const TMDB_ID = /^[1-9][0-9]{0,9}$/;
   const WORK_ID = /^\/works\/OL\d+W$/;
-  // Ten or thirteen characters, all digits but a final X (ISBN-10's check).
-  const ISBN = /^(?:\d{9}|\d{12})[\dX]$/;
+  // The ISBN forms resolve's isbn13_or_none accepts: an ISBN-13 of 978 or 979,
+  // or an ISBN-10 whose check character alone may be X. Each must also carry
+  // its check digit, or --mode overrides would refuse the saved picks. A
+  // Python test pins these and the arithmetic below to resolve_isbn's.
+  const ISBN13 = /^97[89][0-9]{10}$/;
+  const ISBN10 = /^[0-9]{9}[0-9X]$/;
+  // Over every character, check included: ISBN-13 weighs them 1, 3, 1, ...
+  // modulo 10, ISBN-10 ten down to one modulo 11, X standing for ten.
+  const ISBN13_WEIGHTS = [1, 3];
+  const ISBN13_MODULUS = 10;
+  const ISBN10_MODULUS = 11;
+  const ISBN10_X = 10;
   const ISBN_NOISE = /[-\s]/g;
   const TMDB_MOVIE = "https://www.themoviedb.org/movie/";
   const OPEN_LIBRARY = "https://openlibrary.org";
   const CANDIDATE = "candidate-";
   const PICKS_FILE = "picks.json";
   const PICKS_SCHEMA = 1;
-  const BAD_FILM_ID = "Not a TMDb id: type its digits only.";
+  // The data block's schema, review_read.PAGE_SCHEMA.
+  const PAGE_SCHEMA = 1;
+  const BAD_FILM_ID =
+    "Not a TMDb id: type 1 to 10 digits with no leading zero.";
   const BAD_BOOK_ID =
     "Not a work id or ISBN: type /works/OL…W, or 10 or 13 digits.";
 
@@ -54,18 +68,32 @@
     return KEEP_KINDS.includes(entry.kind) ? "keep" : null;
   }
 
+  /** Whether bare ISBN text carries its check digit. @param {string} bare */
+  function isValidIsbn(bare) {
+    const digits = [...bare].map((c) => (c === "X" ? ISBN10_X : Number(c)));
+    const sum = (/** @type {(at: number) => number} */ weight) =>
+      digits.reduce((total, digit, at) => total + weight(at) * digit, 0);
+    if (ISBN13.test(bare)) {
+      const weights = (/** @type {number} */ at) => ISBN13_WEIGHTS[at % 2];
+      return sum(weights) % ISBN13_MODULUS === 0;
+    }
+    const weights = (/** @type {number} */ at) => bare.length - at;
+    return ISBN10.test(bare) && sum(weights) % ISBN10_MODULUS === 0;
+  }
+
   /**
-   * Classify a typed id. A film's is digits only; a book's is a work id, or an
-   * ISBN of ten or thirteen digits once hyphens and spaces are dropped.
+   * Classify a typed id. A film's is a TMDb id; a book's is a work id, or an
+   * ISBN of ten or thirteen digits once hyphens and spaces are dropped, its
+   * check digit correct.
    * @param {string} medium @param {string} text
    * @returns {IdAnswer | null} null when the text is no valid id.
    */
   function classifyTypedId(medium, text) {
     const id = text.trim();
     const isbn = id.replace(ISBN_NOISE, "").toUpperCase();
-    if (medium === "film") return DIGITS.test(id) ? { tmdb_id: id } : null;
+    if (medium === "film") return TMDB_ID.test(id) ? { tmdb_id: id } : null;
     if (WORK_ID.test(id)) return { ol_work: id };
-    return ISBN.test(isbn) ? { isbn13: isbn } : null;
+    return isValidIsbn(isbn) ? { isbn13: isbn } : null;
   }
 
   /**
@@ -80,30 +108,48 @@
 
   /**
    * A candidate's catalog page, or null with no usable id. The id must be its
-   * catalog's (a film's digits, a book's work key), so the link can never be
+   * catalog's (a film's TMDb id, a book's work key), so the link can never be
    * turned toward another host or path.
    * @param {string} medium @param {string} id @returns {string | null}
    */
   function catalogUrl(medium, id) {
     if (medium !== "film") return WORK_ID.test(id) ? OPEN_LIBRARY + id : null;
-    return DIGITS.test(id) ? TMDB_MOVIE + id : null;
+    return TMDB_ID.test(id) ? TMDB_MOVIE + id : null;
   }
 
-  /** True for a plain JSON object, not null or an array. @param {unknown} v */
-  function isPlainObject(v) {
-    return typeof v === "object" && v !== null && !Array.isArray(v);
+  /** An answer as text, its keys sorted, so two compare. @param {Answer} a */
+  function canonical(a) {
+    return JSON.stringify(a, Object.keys(a).sort());
   }
 
-  /** True for an answer shape picks.json may carry. @param {unknown} value */
-  function isAnswer(value) {
-    if (value === "keep") return true;
-    if (!isPlainObject(value)) return false;
-    const record = /** @type {Record<string, unknown>} */ (value);
-    const keys = Object.keys(record);
-    if (keys.length === 1 && record.unresolvable === true) return true;
-    const isId = (/** @type {string} */ key) =>
-      ID_KEYS.includes(key) && typeof record[key] === "string" && record[key];
-    return keys.length > 0 && keys.every(isId);
+  /**
+   * Whether `entry`'s own choices can show `answer`: Keep only where the
+   * entry offers it, an id pair only as a candidate's, and a single id as a
+   * candidate's or as the id field would take it typed.
+   * @param {Entry} entry @param {Answer} answer
+   */
+  function fitsEntry(entry, answer) {
+    if (answer === "keep") return startingAnswer(entry) === "keep";
+    if (answer.unresolvable) return true;
+    const same = (/** @type {Answer | null} */ other) =>
+      other !== null && canonical(other) === canonical(answer);
+    const { medium, candidates } = entry;
+    if (candidates.some((c) => same(candidateAnswer(medium, c)))) return true;
+    const ids = Object.values(answer);
+    return ids.length === 1 && same(classifyTypedId(medium, String(ids[0])));
+  }
+
+  /**
+   * Drop each stored answer its entry cannot show, so an edited store can
+   * neither stop the page rendering nor reach the picks file.
+   * @param {Entry[]} entries @param {Answers} answers
+   */
+  function dropUnfit(entries, answers) {
+    for (const entry of entries) {
+      const key = entryKey(entry);
+      const answer = /** @type {Answer} */ (answers.get(key));
+      if (answers.has(key) && !fitsEntry(entry, answer)) answers.delete(key);
+    }
   }
 
   /**
@@ -132,34 +178,10 @@
     return { schema: PICKS_SCHEMA, review_sha256: data.review_sha256, picks };
   }
 
-  /** Stored text as an object; else empty. @param {string | null} text */
-  function parseStored(text) {
-    try {
-      const value = JSON.parse(text ?? "{}");
-      return isPlainObject(value) ? value : {};
-    } catch {
-      return {};
-    }
-  }
-
   /**
-   * Read a review's stored answers, keeping only valid ones.
-   * @param {Storage | null} storage @param {string} sha
-   * @returns {{answers: Answers, ok: boolean}} ok is false when storage failed.
-   */
-  function loadAnswers(storage, sha) {
-    /** @type {Answers} */
-    const answers = new Map();
-    const { text, ok } = readStored(storage, sha);
-    for (const [key, value] of Object.entries(parseStored(text))) {
-      if (isAnswer(value)) answers.set(key, value);
-    }
-    return { answers, ok };
-  }
-
-  /**
-   * The page's review, or null when its data block cannot be read. The bare
-   * template's `{}` reads as a review with nothing in it.
+   * The page's review, or null when its data block cannot be read or names a
+   * schema other than PAGE_SCHEMA. The bare template's `{}` reads as a review
+   * with nothing in it.
    * @param {Document} doc @returns {ReviewData | null}
    */
   function readData(doc) {
@@ -171,6 +193,8 @@
       return null;
     }
     if (!isPlainObject(raw)) return null;
+    const bare = Object.keys(raw).length === 0;
+    if (!bare && raw.schema !== PAGE_SCHEMA) return null;
     const { errors = 0, applied = 0 } = raw.not_shown || {};
     const { review_sha256 = "", entries = [] } = raw;
     return { review_sha256, not_shown: { errors, applied }, entries };
@@ -321,8 +345,6 @@
     const { entry } = slot;
     const answer = answerFor(entry, slot.page.answers);
     if (answer === null) return;
-    const canonical = (/** @type {Answer} */ a) =>
-      JSON.stringify(a, Object.keys(a).sort());
     const matches = (/** @type {Candidate} */ c) =>
       canonical(candidateAnswer(entry.medium, c)) === canonical(answer);
     const at = entry.candidates.findIndex(matches);
@@ -425,6 +447,7 @@
     }
     const storage = openStorage(win);
     const { answers, ok } = loadAnswers(storage, data.review_sha256);
+    dropUnfit(data.entries, answers);
     /** @type {Page} */
     const page = { doc, win, data, storage, answers };
     find(doc, "#storage-notice").hidden = ok;

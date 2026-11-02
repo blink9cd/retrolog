@@ -32,19 +32,21 @@ _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 #: The planted library's folder name, which is also the name an ancestor search looks for.
 _LIBRARY = "stdio_utf8"
 
+#: The bootstrap's own folder: the module under test, not a tool that runs it.
+_BOOTSTRAP = "retrolog_bootstrap"
+
 #: Every entry point to run, relative to the root, with the arguments that run it to a
-#: clean exit. Each tool's ``--help`` makes it import all it needs, then exit 0: between
-#: them they reach every file whose bootstrap puts a shared library on sys.path,
-#: ``bounded_run.py`` (through the survey's converter) and ``resolve_http.py`` included.
+#: clean exit: each ``retrolog_<name>/retrolog_<name>.py`` at the root but the
+#: bootstrap's, found from the layout rather than listed, so a new tool is run without
+#: an edit here. Each tool's ``--help`` makes it import all it needs, then exit 0: between
+#: them they reach every file outside ``samples/`` whose bootstrap puts a shared library
+#: on sys.path, ``bounded_run.py`` (through the survey's converter), ``resolve_http.py``,
+#: and ``probe_verdict.py`` (through the probe's client) included. The samples' builders
+#: bootstrap the same way, through the same module, and are not run here.
 _BOOTSTRAPPED: tuple[tuple[str, tuple[str, ...]], ...] = tuple(
-    (f"{tool}/{tool}.py", ("--help",))
-    for tool in (
-        "retrolog_survey",
-        "retrolog_parse",
-        "retrolog_resolve",
-        "retrolog_review",
-        "retrolog_export",
-    )
+    (f"{folder.name}/{folder.name}.py", ("--help",))
+    for folder in sorted(_PROJECT_ROOT.glob("retrolog_*"))
+    if folder.name != _BOOTSTRAP and (folder / f"{folder.name}.py").is_file()
 )
 
 #: Folders a clone may hold that are not this project's modules: installed packages, some
@@ -154,7 +156,7 @@ class TestBootstrapStaysInsideTheProject(unittest.TestCase):
     """No bootstrap may import a module from above this project's root.
 
     A search of the ancestors would also take a same-named folder planted ABOVE the
-    checkout -- a shared temporary directory, say -- and would take it outright when the
+    checkout (a shared temporary directory, say), and would take it outright when the
     project's own copy is missing. These copy the project under a parent holding such
     folders and run each tool in a real subprocess; the planted modules record that they
     ran.
@@ -220,6 +222,21 @@ class TestBootstrapStaysInsideTheProject(unittest.TestCase):
         if not with_library:
             shutil.rmtree(project / _LIBRARY)
         return project
+
+    def test_every_tool_entry_point_is_run(self) -> None:
+        """The derived list's own control: an empty one would pass every test below.
+
+        Every entry point at ``<folder>/<folder>.py`` that asks the bootstrap for a
+        library is in it, and nothing else is.
+        """
+        asking = sorted(
+            path.relative_to(_PROJECT_ROOT).as_posix()
+            for path in _PROJECT_ROOT.glob("*/*.py")
+            if path.stem == path.parent.name != _BOOTSTRAP
+            and "retrolog_bootstrap.add_shared(" in path.read_text(encoding="utf-8")
+        )
+        self.assertNotEqual(asking, [])
+        self.assertEqual([script for script, _ in _BOOTSTRAPPED], asking)
 
     def test_no_bootstrap_imports_a_module_planted_above_the_root(self) -> None:
         for script, args in _BOOTSTRAPPED:

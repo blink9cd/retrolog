@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import sys
 import unittest
 from pathlib import Path
@@ -19,6 +20,7 @@ sys.path.insert(0, str(_TOOLS / "retrolog_resolve" / "src"))
 sys.path.insert(0, str(_TOOLS / "retrolog_parse" / "src"))
 sys.path.insert(0, str(_TOOLS / "retrolog_survey" / "src"))
 sys.path.insert(0, str(_TESTS / "fixtures"))
+import resolve_isbn  # noqa: E402 - after the sys.path inserts above
 import resolve_rows  # noqa: E402 - after the sys.path inserts above
 import review_read  # noqa: E402 - after the sys.path inserts above
 from review_fixtures import (  # noqa: E402 - after the sys.path inserts above
@@ -102,6 +104,21 @@ class ReadReviewTest(unittest.TestCase):
         self.assertEqual(only["kind"], "re-searched")
         self.assertEqual(only["candidates"], [match])
 
+    def test_a_suspect_exact_entry_is_kept_with_its_one_candidate(self) -> None:
+        match = candidate(id="1000016", title=FILM_TITLE, year=None, votes=0)
+        held = entry(
+            "suspect-exact",
+            detail="one exact title, held: no release date",
+            candidates=[match],
+        )
+        (only,) = review_read.read_review(as_bytes(review([held]))).entries
+        self.assertEqual(only["kind"], "suspect-exact")
+        self.assertEqual(only["candidates"], [match])
+
+    def test_suspect_exact_is_decidable_right_after_ambiguous(self) -> None:
+        kinds = review_read.DECIDABLE_KINDS
+        self.assertEqual(kinds.index("suspect-exact"), kinds.index("ambiguous") + 1)
+
     def test_re_searched_is_decidable_right_after_variant(self) -> None:
         kinds = review_read.DECIDABLE_KINDS
         self.assertEqual(kinds.index("re-searched"), kinds.index("variant") + 1)
@@ -169,7 +186,7 @@ class ReadReviewTest(unittest.TestCase):
                 "schema_version: this version reads schema_version 1 only",
             )
         self.assertEqual(
-            self._refusal(review(medium="music")), "medium: must be book, film or all"
+            self._refusal(review(medium="music")), "medium: must be book, film, or all"
         )
         document = review()
         document["entries"] = {}
@@ -271,7 +288,7 @@ class ReadReviewTest(unittest.TestCase):
     def test_two_decidable_entries_for_one_scope_are_refused(self) -> None:
         self.assertEqual(
             self._refusal(review([entry(), book_entry(), entry("not-found")])),
-            "entries[2]: the same medium, title and rows as entries[0]",
+            "entries[2]: the same medium, title, and rows as entries[0]",
         )
 
     def test_one_title_with_other_rows_is_two_entries(self) -> None:
@@ -339,8 +356,13 @@ class ReadReviewTest(unittest.TestCase):
     def test_a_tampered_candidate_id_is_refused(self) -> None:
         # The page links a candidate to its catalog page by its id, so an id that is
         # not a catalog id (a path to another host, a traversal) must not reach it.
-        film_rule = "entries[0].candidates[0].id: must be a string of digits"
-        for value in ("", "/works/OL1000013W", "1000003x", " 1000003", "\u0661"):
+        film_rule = (
+            "entries[0].candidates[0].id: must be a string of 1 to 10 digits with no "
+            "leading zero"
+        )
+        # A leading zero or an eleventh digit is no TMDb id, by resolve's own rule.
+        film_ids = ("", "/works/OL1000013W", "1000003x", " 1000003", "\u0661", "0603")
+        for value in (*film_ids, "12345678901"):
             with self.subTest(film=value):
                 bad = review([entry(candidates=[candidate(id=value)])])
                 self.assertEqual(self._refusal(bad), film_rule)
@@ -425,6 +447,42 @@ class PageDataTest(unittest.TestCase):
             review_read.read_review(as_bytes(review([entry()])))
         )
         self.assertEqual(json.loads(json.dumps(block)), block)
+
+    def test_the_page_reads_the_schema_this_module_writes(self) -> None:
+        # The page shows its unreadable state for any other schema, so the two
+        # constants must move together.
+        script = (_TOOL / "page" / "review.js").read_text(encoding="utf-8")
+        found = re.search(r"const PAGE_SCHEMA = (\d+);", script)
+        assert found is not None
+        self.assertEqual(int(found.group(1)), review_read.PAGE_SCHEMA)
+
+    def test_the_page_holds_a_film_id_to_resolves_rule(self) -> None:
+        # A film id the page accepts or links must be one --mode overrides and
+        # resolve accept, so the page's pattern is resolve_columns.TMDB_ID's.
+        script = (_TOOL / "page" / "review.js").read_text(encoding="utf-8")
+        found = re.search(r"const TMDB_ID = /\^(.*)\$/;", script)
+        assert found is not None
+        self.assertEqual(found.group(1), review_read.TMDB_ID.pattern)
+
+    def test_the_page_checks_an_isbn_by_resolves_rule(self) -> None:
+        # A typed ISBN the page accepts must be one isbn13_or_none accepts, or the
+        # saved picks are refused: the page's patterns and check-digit arithmetic
+        # are resolve_isbn's (its private constants, read here to pin the two).
+        script = (_TOOL / "page" / "review.js").read_text(encoding="utf-8")
+
+        def constant(name: str) -> str:
+            found = re.search(rf"const {name} = (.*);", script)
+            assert found is not None, name
+            return found.group(1)
+
+        self.assertEqual(constant("ISBN13"), f"/^{resolve_isbn._ISBN13.pattern}$/")
+        self.assertEqual(constant("ISBN10"), f"/^{resolve_isbn._ISBN10.pattern}$/")
+        weights = json.loads(constant("ISBN13_WEIGHTS"))
+        self.assertEqual(tuple(weights), resolve_isbn._ISBN13_WEIGHTS)
+        moduli = (int(constant("ISBN13_MODULUS")), int(constant("ISBN10_MODULUS")))
+        python = (resolve_isbn._ISBN13_MODULUS, resolve_isbn._ISBN10_MODULUS)
+        self.assertEqual(moduli, python)
+        self.assertEqual(int(constant("ISBN10_X")), resolve_isbn._ISBN10_X_VALUE)
 
 
 if __name__ == "__main__":

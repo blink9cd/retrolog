@@ -313,7 +313,7 @@ class ResearchWiredTest(RowsCase):
         self.assertEqual(self.fetch.calls, [_FIRST_URL])
 
     def test_an_exact_title_or_a_collision_sends_no_second_search(self) -> None:
-        exact = tmdb_result(9, _TITLE, release_date="2000-01-01")
+        exact = tmdb_result(9, _TITLE, release_date="2000-01-01", vote_count=40)
         twin = tmdb_result(10, _TITLE, release_date="2001-01-01")
         for found, status in (((exact,), "resolved"), ((exact, twin), "ambiguous")):
             with self.subTest(status=status):

@@ -15,7 +15,8 @@ What it reports, and why:
   so a report can count what was left out instead of silently losing it.
 - A directory whose listing fails (the walk root included, reported as "."), and a file
   or directory that cannot be examined (its `lstat` fails), are each kept as one
-  `unreadable` entry carrying the error's class name, so one bad item neither aborts the walk nor drops a subtree unannounced.
+  `unreadable` entry carrying the error's class name, so one bad item neither aborts
+  the walk nor drops a subtree unannounced.
   Exclusion is checked first: an excluded path stays `excluded` whatever went wrong.
 - Paths are relative to the walk root, POSIX-separated and Unicode NFC. Some file
   systems store names decomposed (NFD); normalizing means the same name always compares

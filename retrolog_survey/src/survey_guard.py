@@ -20,7 +20,7 @@ by accident. ``check_out_dir`` refuses these places, checked in this order:
    marker of the calling tool. Each tool that shares this guard names itself with the
    ``tool`` keyword and leaves a marker file named ``"." + tool`` behind (``MARKER``
    for the survey, the default), so a re-run may overwrite its own earlier output and
-   never anything else -- not even another tool's. A marker that is a symbolic link
+   never anything else, not even another tool's. A marker that is a symbolic link
    does not count.
 
 ``check_outside_work_tree`` applies rule 2 alone, for a tool that writes one file into
@@ -65,7 +65,7 @@ GitRunner = Callable[[Sequence[str], Path, float], int]
 _DEFAULT_TOOL = "retrolog_survey"
 # The file a survey writes into its output directory, so a later run can tell its own
 # earlier output from a directory that holds something else. Another tool's marker is
-# ``_marker_name(tool)``; this is the default's spelling, kept for existing callers.
+# ``_marker_name(tool)``; this is the default's spelling, named so tests can refer to it.
 MARKER = "." + _DEFAULT_TOOL
 # The marker's permissions: the user can read and write it, and others can only read it.
 _MARKER_MODE = 0o644
@@ -146,8 +146,8 @@ def _has_git_entry(resolved: Path, start: Path) -> bool:
     """Whether a ``.git`` lies on the way to ``resolved``, by name or on disk.
 
     True when ``resolved`` has a ``.git`` component, or when ``start`` or any directory
-    above it holds a ``.git`` entry of any kind, even a broken link. This ignores ceilings and filesystem boundaries on purpose: it errs toward
-    refusing.
+    above it holds a ``.git`` entry of any kind, even a broken link. This ignores
+    ceilings and filesystem boundaries on purpose: it errs toward refusing.
     """
     return _GIT_ENTRY in resolved.parts or any(
         os.path.lexists(folder / _GIT_ENTRY) for folder in (start, *start.parents)
@@ -175,8 +175,8 @@ def _marker_text(tool: str) -> bytes:
 def _output_noun(tool: str) -> str:
     """How a refusal names ``tool``'s output: "survey" for the default, else the name.
 
-    The survey's own wording predates the ``tool`` keyword and is documented, so it is
-    kept; any other tool is named as itself.
+    The survey's wording is documented in its refusal messages, so it stays as is; any
+    other tool is named as itself.
     """
     return "survey" if tool == _DEFAULT_TOOL else tool
 

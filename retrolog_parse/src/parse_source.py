@@ -8,7 +8,7 @@ rather than re-reading runs.
 A ``.doc`` is never read directly: a copy is converted to ``.docx`` inside a private
 directory under the caller's work directory (``SourceContext.workdir``, outside the
 source tree), LibreOffice's output is preferred when it worked, and the private
-directory is removed afterwards. The sibling retrolog_survey ``src/`` must already be on
+directory is removed afterward. The sibling retrolog_survey ``src/`` must already be on
 ``sys.path``; ``retrolog_parse.py`` and the tests put it there.
 
 Every failure becomes a ``SourceError`` whose message is an exception class name or a
@@ -26,7 +26,7 @@ from parse_types import Mark, Segment, SourceLine
 from survey_convert import ConversionResult, Runner, compare_converters, converted_path
 from survey_docx import BadDocx, DocxInfo, RunInfo, read_docx
 from survey_lines import SYMBOL_FONTS
-from survey_report import workdir_name
+from survey_report import preferred, workdir_name
 from survey_text import FileTooLarge, read_text
 from survey_walk import FileEntry
 
@@ -157,14 +157,12 @@ def _read_docx(
     return lines_from_docx(entry.rel_path, info)
 
 
-# The same "LibreOffice first" policy as retrolog_survey's survey_report._preferred, so
-# the parse reads the output the survey reported on; change the two together.
 def _preferred(results: Sequence[ConversionResult]) -> ConversionResult:
-    """LibreOffice's result when it worked, else textutil's.
+    """The output the survey reported on: ``survey_report.preferred``'s choice.
 
     Raises ``SourceError`` when neither converter produced output.
     """
-    chosen = next((r for r in reversed(results) if r.status == "ok"), None)
+    chosen = preferred(results)
     if chosen is None:
         raise SourceError(_NO_CONVERSION)
     return chosen

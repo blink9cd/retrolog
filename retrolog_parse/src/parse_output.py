@@ -3,11 +3,13 @@
 Pure: every function returns text, and the caller writes it. The CSV columns are the
 normalized format the later tools read (``COLUMNS``, one per ``Row`` field, in order);
 rows go to one file per medium and year, ``<medium>-<year>.csv``, or
-``<medium>-undated.csv`` for rows no rule could date.
+``<medium>-undated.csv`` for rows no rule could date. ``CSV_NAME`` is the one pattern
+that matches every such name, for the later tools that read them, and ``year_order``
+the one key they sort such names' years by.
 
-The review text quotes source lines, which are untrusted: the Markdown escapes every
-character that could start markup or end a table cell, and keeps each value on one
-line, the same rules the survey's report follows.
+The review text quotes source lines, which are untrusted: the Markdown escapes the
+characters that could break its layout (``MARKUP``) and keeps each value on one line,
+by the survey report's own rules, imported from ``survey_markdown``.
 """
 
 from __future__ import annotations
@@ -17,11 +19,13 @@ import datetime
 import io
 import json
 import re
+import typing
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict, astuple
 
 from parse_rows import ERROR_KINDS, REVIEW_KINDS, Row
-from parse_types import ReviewItem
+from parse_types import Medium, ReviewItem
+from survey_markdown import BREAK_MARK, LINE_BREAK, MARKUP
 
 COLUMNS = (
     "medium",
@@ -40,17 +44,18 @@ COLUMNS = (
 )
 # The year part of an undated row's file name.
 UNDATED = "undated"
+# Every name csv_name writes, and nothing else: groups (medium, year or UNDATED). The
+# year is unpadded and may have any number of digits, since dates.century can put a
+# row before the year 1000; ASCII, so no other script's digit counts. Use fullmatch.
+CSV_NAME = re.compile(
+    rf"({'|'.join(typing.get_args(Medium))})-(\d+|{UNDATED})\.csv", re.ASCII
+)
 # The review.json layout version; a later incompatible layout bumps it.
 SCHEMA_VERSION = 1
 # Sorts an undated row's missing date; every row of one undated file has none.
 _NO_DATE = datetime.date.min
 _TITLE = "# retrolog_parse review"
 _TABLE_HEAD = ("| File | Line | Text | Detail |", "| --- | --- | --- | --- |")
-# Every line break str.splitlines knows, CRLF first so it counts once.
-_LINE_BREAK = re.compile("\r\n|[\r\n\v\f\x1c\x1d\x1e\x85  ]")
-_BREAK_MARK = "\N{DOWNWARDS ARROW WITH CORNER LEFTWARDS}"
-# A backslash, backtick, angle bracket, pipe, or the "(" of a link's "](".
-_MARKUP = re.compile(r"([\\`<>|]|(?<=\])\()")
 
 
 # ---------------------------------------------------------------------------
@@ -73,6 +78,17 @@ def csv_name(row: Row) -> str:
     """The file a row belongs in: ``<medium>-<year>.csv`` or ``<medium>-undated.csv``."""
     year = UNDATED if row.date is None else str(row.date.year)
     return f"{row.medium}-{year}.csv"
+
+
+def year_order(year: str) -> tuple[bool, int, str]:
+    """The sort key of a ``CSV_NAME`` year part: dated years in order, then UNDATED.
+
+    The year is unpadded, so ``film-150.csv`` would sort after ``film-1499.csv`` as
+    text; a shorter year string is the earlier year, since csv_name never writes a
+    leading zero.
+    """
+    undated = year == UNDATED
+    return (undated, 0 if undated else len(year), year)
 
 
 def _sort_key(row: Row) -> tuple[datetime.date, str, int]:
@@ -133,8 +149,8 @@ def escape_cell(value: object) -> str:
     Trimmed because a table cell drops its edge spaces anyway, and padding inside the
     pipes breaks the compact table style a Markdown linter holds the page to.
     """
-    text = _LINE_BREAK.sub(_BREAK_MARK, str(value)).strip()
-    return _MARKUP.sub(r"\\\1", text)
+    text = LINE_BREAK.sub(BREAK_MARK, str(value)).strip()
+    return MARKUP.sub(r"\\\1", text)
 
 
 def _table_row(item: ReviewItem) -> str:
@@ -161,10 +177,21 @@ def review_markdown(review: Sequence[ReviewItem], counts: Mapping[str, int]) -> 
     lines = [
         _TITLE,
         "",
-        f"{sum(counts.values())} review items, {errors} of them errors.",
+        count_line(sum(counts.values()), errors),
     ]
     for kind in REVIEW_KINDS:
         items = [item for item in review if item.kind == kind]
         if items:
             lines.extend(_kind_section(kind, items))
     return "\n".join(lines) + "\n"
+
+
+def count_line(total: int, errors: int) -> str:
+    """A review's count line, each noun singular for a count of one.
+
+    Public so resolve's review, and export's after its sent counts, print the same
+    line from the same code.
+    """
+    items = "1 review item" if total == 1 else f"{total} review items"
+    of_them = "1 of them an error" if errors == 1 else f"{errors} of them errors"
+    return f"{items}, {of_them}."

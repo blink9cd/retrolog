@@ -12,6 +12,11 @@ one when it far outvotes the rest, and no exact title is retried under each of
 ``resolve_variants.VARIANTS`` in turn. Neither sends a request: both read the
 candidates the one search already returned.
 
+``film_verdict`` also doubts the exact rule's own answer: a single exact title with no
+release date, matched on its original title alone, or under the vote floor is held for
+review rather than settled (``suspect_reasons``). The loosened rules are not held, since
+each already lists its choice for a check.
+
 One more rule does need a second search: a film still without an exact title
 is searched again under its title without a leading article. Deciding it stays pure:
 ``research_query`` says whether to send that search and for what title, and
@@ -24,7 +29,7 @@ import math
 from collections.abc import Callable, Sequence
 
 from parse_rows import title_key as normalize
-from resolve_types import Candidate, Lookup
+from resolve_types import HELD_BASIS, Candidate, Lookup
 from resolve_variants import VARIANTS, leading_article
 
 SHOWN = 3  # candidates an ambiguous lookup lists
@@ -155,6 +160,39 @@ def _by_variant(kept: Sequence[Candidate], title: str) -> Lookup | None:
     return None
 
 
+def suspect_reasons(
+    candidate: Candidate, title_key: str, *, vote_floor: int
+) -> tuple[str, ...]:
+    """Why a film's single exact title should not settle: every reason that holds.
+
+    ``candidate`` is the one exact title for the row's ``title_key``. A ``vote_floor``
+    of 0 turns off the votes reason alone, an unknown count included. The reasons name
+    no title, so a review detail built from them stays free of one.
+    """
+    reasons: list[str] = []
+    if candidate.year is None:
+        reasons.append("no release date")
+    if normalize(candidate.title) != title_key:
+        reasons.append("matched on its original title only")
+    if vote_floor > 0 and candidate.votes is None:
+        reasons.append(f"votes unknown, under the floor of {vote_floor}")
+    elif candidate.votes is not None and candidate.votes < vote_floor:
+        reasons.append(f"{candidate.votes} votes, under the floor of {vote_floor}")
+    return tuple(reasons)
+
+
+def _held_if_suspect(lookup: Lookup, title_key: str, vote_floor: int) -> Lookup:
+    """``lookup``, or an ambiguous one listing its chosen film when that is suspect."""
+    chosen = lookup.chosen
+    if chosen is None:
+        return lookup
+    reasons = suspect_reasons(chosen, title_key, vote_floor=vote_floor)
+    if not reasons:
+        return lookup
+    detail = f"{lookup.detail}, held: {'; '.join(reasons)}"
+    return Lookup("ambiguous", None, (chosen,), detail, HELD_BASIS)
+
+
 # fuzz-target
 def film_verdict(
     candidates: Sequence[Candidate],
@@ -164,14 +202,17 @@ def film_verdict(
     work_year: int | None,
     date_year: int | None,
     vote_ratio: float,
+    vote_floor: int,
 ) -> Lookup:
     """A film's answer: ``verdict``, with the most-votes and variant rules where it falls short.
 
     ``title`` is the row's title as written and ``title_key`` its normalized form: the
     variants rewrite the written title, since normalizing drops what some of them read.
     The year filters run before every rule. Two or more exact titles try the most-votes
-    rule; no exact title tries the variants. Whatever those leave is exactly
-    ``verdict``'s answer, and ``Lookup.basis`` names the rule that resolved the title.
+    rule; no exact title tries the variants. Whatever those leave is ``verdict``'s
+    answer, and ``Lookup.basis`` names the rule that resolved the title. A single exact
+    title ``suspect_reasons`` doubts under ``vote_floor`` comes back ambiguous instead,
+    listing it, with the basis ``suspect-exact``.
     """
     kept = filter_years(candidates, work_year=work_year, date_year=date_year)
     matched = exact(kept, title_key)
@@ -182,7 +223,8 @@ def film_verdict(
         loosened = _by_variant(kept, title)
     if loosened is not None:
         return loosened
-    return verdict(candidates, title_key, work_year=work_year, date_year=date_year)
+    plain = verdict(candidates, title_key, work_year=work_year, date_year=date_year)
+    return _held_if_suspect(plain, title_key, vote_floor)
 
 
 def research_query(

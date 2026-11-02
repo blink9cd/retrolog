@@ -5,8 +5,9 @@ input root (``/``-separated), a line number in it and the checked rules, and ret
 ``Placement``. The order is fixed and each step is its own helper:
 
 1. a hand-dated ``[[terms]]`` block holding the line wins outright;
-2. else the year comes from an explicit year in the file name (``#NN``), a one-year
-   folder, or a two-year folder whose file name holds exactly one break word;
+2. else the year comes from an explicit year in the file name (``explicit_year``), a
+   one-year folder, or a two-year folder whose file name holds break words (from
+   ``earlier_words`` or ``later_words``) of one list only;
 3. the month is the first season word in the file name, else December, and the day
    is that month's last.
 
@@ -100,7 +101,7 @@ def _one_year_folder(dates: DateRules, folder: str) -> int | None:
 
 
 def _break_word_year(dates: DateRules, folder: str, name: str) -> int | None:
-    """Which year of a two-year folder the file name's single break word picks."""
+    """Which year of a two-year folder the file name's break words pick."""
     match = dates.two_year_folder.search(folder)
     if match is None:
         return None

@@ -2,24 +2,25 @@
 
 The fourth step of the retrolog tools (survey, parse, resolve, export). It reads the
 CSV files ``retrolog_resolve`` wrote, without writing there, the operator's export
-config and a fresh export of the operator's account, and writes to ``--out`` the
-numbered import files for every film the account does not hold yet, plus
-``review.json`` and ``review.md``. Nothing is sent anywhere: the operator uploads the
-files.
+config, and a fresh export of the operator's account, and writes to ``--out`` the
+numbered import files for every film no earlier import sent, without stars for a film
+the owner already logged there, plus ``review.json`` and ``review.md``. Nothing is
+sent anywhere: the operator uploads the files. ``--dry-run`` checks the same and writes
+nothing; ``--test-film`` writes only ``letterboxd-test.csv``, one logged film's rows.
 
-The stages live in ``src/`` beside this file; the sibling retrolog_resolve's ``src/``
-supplies the columns it adds and its statuses, retrolog_parse's the CSV columns, title
-matching and value checks, and retrolog_survey's the output guard and atomic writes.
-All of them, and the shared libraries this file imports, are put on ``sys.path`` from
-this file's own location, so the tool can be moved.
-``retrolog_export.md`` describes the tool, its config and its output.
+The stages live in ``src/`` here; retrolog_resolve's ``src/`` supplies its columns,
+statuses, creator joiner, and ``--timeout`` rule, retrolog_parse's the CSV columns and
+names, title matching, and value checks, and retrolog_survey's the output guard,
+atomic writes, and plural helper. All of them, and the shared libraries this file
+imports, go on ``sys.path`` from its own location, so the tool can be moved.
+``retrolog_export.md`` describes the tool, its config, and its output.
 """
 
 from __future__ import annotations
 
 import argparse
 import sys
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from fnmatch import fnmatchcase
 from pathlib import Path
 
@@ -36,9 +37,7 @@ import help_formatter  # noqa: E402 - after the bootstrap above
 import stdio_utf8  # noqa: E402 - after the bootstrap above
 
 _HERE = Path(__file__).resolve().parent
-# This tool's private modules, then resolve's (its columns and statuses), parse's
-# (columns, title_key, the value checks) and the survey's (the output guard, atomic
-# writes).
+# This tool's private modules, then resolve's, parse's, and the survey's (see above).
 SOURCE_DIRS = (
     _HERE / "src",
     _HERE.parent / "retrolog_resolve" / "src",
@@ -48,14 +47,23 @@ SOURCE_DIRS = (
 sys.path[:0] = [str(folder) for folder in SOURCE_DIRS if str(folder) not in sys.path]
 
 import survey_guard  # noqa: E402 - after the src/ inserts
+from export_args import whole_number  # noqa: E402 - after the src/ inserts
 from export_account import AccountError  # noqa: E402 - after the src/ inserts
-from export_config import ConfigError, check_keys, load_config  # noqa: E402
+from export_config import (  # noqa: E402 - after the src/ inserts
+    ConfigError,
+    check_keys,
+    check_omit,
+    load_config,
+)
+from export_cutoff import CutoffError  # noqa: E402 - after the src/ inserts
+from export_formula import formula_entries  # noqa: E402 - after the src/ inserts
 from export_input import InputError, read_resolved  # noqa: E402 - after the inserts
 from export_output import (  # noqa: E402 - after the src/ inserts
     import_files,
     review_counts,
     review_json,
     review_markdown,
+    summary_lines,
 )
 from export_pack import PackError, pack  # noqa: E402 - after the src/ inserts
 
@@ -63,19 +71,20 @@ from export_pack import PackError, pack  # noqa: E402 - after the src/ inserts
 # tests, find the review vocabulary here.
 from export_select import (  # noqa: E402 - after the src/ inserts
     ERROR_KINDS,
-    CutoffError,
     Film,
-    formula_entries,
+    Selection,
     select,
 )
 from export_select import REVIEW_KINDS as REVIEW_KINDS  # noqa: E402
 from export_services import SERVICES, ServiceSpec  # noqa: E402 - after the inserts
+from export_test_film import pick_test_film  # noqa: E402 - after the src/ inserts
 from export_types import (  # noqa: E402 - after the src/ inserts
-    FilmKey,
+    Account,
     LetterboxdConfig,
     ResolvedRow,
     ReviewEntry,
 )
+from resolve_args import MAX_SECONDS, positive  # noqa: E402 - after the src/ inserts
 from survey_write import describe_error, write_atomic  # noqa: E402
 
 TOOL = "retrolog_export"
@@ -87,30 +96,13 @@ _MAX_ROWS, _DEFAULT_ROWS = 1_900, 1_900
 _MIN_BYTES, _MAX_BYTES = 1_024, 1_000_000
 # The review's two files, in the order written: always after every import file.
 _REVIEW_NAMES = ("review.json", "review.md")
+# The one-film test run's file: <file_stem>-test.csv, so a later run's cleanup of
+# every <file_stem>-*.csv removes it.
+_TEST_SUFFIX = "test"
 
 
 class _Refused(Exception):
     """The run may not start or finish; the message names no path and no value."""
-
-
-def _positive(text: str) -> float:
-    """An argparse type: a number of seconds greater than zero."""
-    value = float(text)
-    if value <= 0:
-        raise argparse.ArgumentTypeError("must be greater than 0")
-    return value
-
-
-def _whole_number(low: int, high: int) -> Callable[[str], int]:
-    """An argparse type: a whole number from ``low`` to ``high``, both included."""
-
-    def parse(text: str) -> int:
-        value = int(text)
-        if not low <= value <= high:
-            raise argparse.ArgumentTypeError(f"must be {low} to {high}")
-        return value
-
-    return parse
 
 
 _EPILOG = (
@@ -120,14 +112,18 @@ _EPILOG = (
     "downloaded after the last import, as its .zip or unpacked folder.\n\n"
     "Run order: after retrolog_resolve (settle its review.md first); then upload "
     "the import files in number order, and download a fresh account export before "
-    "the next run.\n\n"
-    "Exit codes: 0 written, no error in the review - 1 written, but the review "
-    "lists a held film (a held-* kind), and every other film was written - 2 bad "
+    "the next run. --dry-run first checks the config and prints the counts; "
+    "--test-film writes one logged-no-stars film to import before the rest.\n\n"
+    "Exit codes: 0 means written (or, with --dry-run, checked), with no error in "
+    "the review. 1 means written, but the review lists a held film (a held-* "
+    "kind), and every other film was written (--test-film exits 0 here). 2 means "
+    "bad "
     "arguments; an unreadable resolve folder, config, or account export; a CSV "
     "in the resolve folder that is not resolve's (an older resolve's included: "
-    "rerun retrolog_resolve); a config missing a rating key a row carries, or "
-    "with no table for --service; a cutoff naming no row; a film too large for "
-    "one file; --out refused; or the output could not be written."
+    "rerun retrolog_resolve); a config missing a rating key a row carries, with an "
+    "omit entry naming no row, or with no table for --service; a cutoff naming no "
+    "row; a film too large for one file; --test-film with no logged-no-stars film; "
+    "--out refused; or the output could not be written."
 )
 
 
@@ -135,7 +131,8 @@ def build_parser() -> argparse.ArgumentParser:
     """The CLI. Every argument is a named option, and every default is shown."""
     parser = argparse.ArgumentParser(
         description="Write the import files for every film retrolog_resolve "
-        "settled that the account does not hold yet, and a review list.",
+        "settled that no earlier import sent, without stars for a film already "
+        "logged on the account, and a review list.",
         # Shows each default, and none on a required option (the stock formatter
         # stamps "(default: None)" there before CPython 3.13; the floor is 3.12).
         formatter_class=help_formatter.ReqAwareDefaultsFormatter,
@@ -172,22 +169,36 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--rows-per-file",
-        type=_whole_number(1, _MAX_ROWS),
+        type=whole_number(1, _MAX_ROWS),
         default=_DEFAULT_ROWS,
         help=f"The most data rows one import file holds, 1 to {_MAX_ROWS}.",
     )
     parser.add_argument(
         "--max-bytes",
-        type=_whole_number(_MIN_BYTES, _MAX_BYTES),
+        type=whole_number(_MIN_BYTES, _MAX_BYTES),
         default=_MAX_BYTES,
         help=f"The most bytes one import file holds, header included, {_MIN_BYTES} "
         f"to {_MAX_BYTES}.",
     )
     parser.add_argument(
         "--timeout",
-        type=_positive,
+        type=positive,
         default=_DEFAULT_TIMEOUT,
-        help="Seconds per git call of the --out check.",
+        help="Seconds per git call of the --out check: greater than 0 and at most "
+        f"{MAX_SECONDS:g}.",
+    )
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Check everything a run checks and print its counts, but write "
+        "nothing, not even --out.",
+    )
+    mode.add_argument(
+        "--test-film",
+        action="store_true",
+        help="Write only letterboxd-test.csv: every row of the logged-no-stars film "
+        "review.md lists first, to import before the rest.",
     )
     return parser
 
@@ -215,20 +226,24 @@ def _load_config(path: Path, spec: ServiceSpec) -> LetterboxdConfig:
 def _read_rows(
     resolved: Path, spec: ServiceSpec, config: LetterboxdConfig
 ) -> tuple[ResolvedRow, ...]:
-    """The resolve folder's rows of ``spec``'s medium, every rating key configured."""
+    """The resolve folder's rows of ``spec``'s medium.
+
+    Every rating key is configured, and every omit entry names one of the rows.
+    """
     try:
         rows = read_resolved(resolved, spec.medium)
     except InputError as error:
         raise _Refused(str(error)) from None
     try:
         check_keys(config, rows)
+        check_omit(config, rows)
     except ConfigError as error:
         raise _Refused(f"invalid --config: {error}") from None
     return rows
 
 
-def _read_account(path: Path, spec: ServiceSpec) -> frozenset[FilmKey]:
-    """The films the account export lists; ``_Refused`` naming no path or title."""
+def _read_account(path: Path, spec: ServiceSpec) -> Account:
+    """What the account export lists, file by file; ``_Refused`` naming no path or title."""
     try:
         return spec.read_account(path)
     except AccountError as error:
@@ -236,7 +251,7 @@ def _read_account(path: Path, spec: ServiceSpec) -> frozenset[FilmKey]:
 
 
 def _check_out(args: argparse.Namespace, run_git: survey_guard.GitRunner) -> None:
-    """Refuse an ``--out`` inside ``--resolved``, an ``--account`` folder or git.
+    """Refuse an ``--out`` inside ``--resolved``, an ``--account`` folder, or git.
 
     Nothing is created: the folder is made only once the files to write are known.
     """
@@ -260,8 +275,14 @@ def _check_out(args: argparse.Namespace, run_git: survey_guard.GitRunner) -> Non
 def _import_cells(
     spec: ServiceSpec, config: LetterboxdConfig, films: Sequence[Film]
 ) -> list[list[tuple[str, ...]]]:
-    """Each film's import rows, one cell per ``spec.columns`` entry."""
-    return [[spec.row_cells(row, config) for row in film.rows] for film in films]
+    """Each film's import rows, one cell per ``spec.columns`` entry.
+
+    A film the owner logged on the account goes with its ratings withheld.
+    """
+    return [
+        [spec.row_cells(row, config, film.withhold_rating) for row in film.rows]
+        for film in films
+    ]
 
 
 def _formula_review(
@@ -330,19 +351,6 @@ def _prepare_out(args: argparse.Namespace) -> Path:
     return args.out.resolve()
 
 
-def _summary(counts: Mapping[str, int]) -> list[str]:
-    """The run's totals, then each review kind that occurred: counts only."""
-    lines = [
-        f"films sent: {counts['films-sent']}",
-        f"rows sent: {counts['rows-sent']}",
-        f"rows cut: {counts['rows-cut']}",
-        f"files: {counts['files']}",
-    ]
-    return lines + [
-        f"review {kind}: {counts[kind]}" for kind in REVIEW_KINDS if counts[kind]
-    ]
-
-
 def _record(
     args: argparse.Namespace,
     spec: ServiceSpec,
@@ -357,24 +365,86 @@ def _record(
     except OSError as error:
         # describe_error keeps the class and reason only: the message names the path.
         raise _Refused(f"could not write the output: {describe_error(error)}") from None
-    for line in _summary(counts):
+    for line in summary_lines(counts):
         print(line)
 
 
+def _write_test_file(args: argparse.Namespace, spec: ServiceSpec, text: str) -> None:
+    """Clear the earlier run's files, then write the test file alone; no review."""
+    out = _prepare_out(args)
+    try:
+        _clear_previous(out, spec)
+        write_atomic(out / f"{spec.file_stem}-{_TEST_SUFFIX}.csv", text)
+    except OSError as error:
+        raise _Refused(f"could not write the output: {describe_error(error)}") from None
+
+
+def _any_tagged(spec: ServiceSpec, rows: Sequence[Sequence[str]]) -> bool:
+    """Whether the import tags at least one of a film's ``rows``: see ``tag_columns``.
+
+    One is enough: the next run skips every row of a film any tagged row names.
+    """
+    at = [spec.columns.index(column) for column in spec.tag_columns]
+    return any(any(cells[i] for i in at) for cells in rows)
+
+
+def _test_run(
+    args: argparse.Namespace,
+    spec: ServiceSpec,
+    films: Sequence[Film],
+    cells: Sequence[Sequence[Sequence[str]]],
+) -> None:
+    """Write the test file of ``pick_test_film``'s film, and print its counts.
+
+    A formula-cell count is printed too, since no review is written to list it.
+    """
+    index = pick_test_film(films, [_any_tagged(spec, rows) for rows in cells])
+    if index is None:
+        raise _Refused("no logged-no-stars film to test: run without --test-film")
+    (text,) = _import_texts(args, spec, [cells[index]])
+    _write_test_file(args, spec, text)
+    print(f"test film rows: {len(films[index].rows)}")
+    print(f"file: {spec.file_stem}-{_TEST_SUFFIX}.csv")
+    if flagged := _formula_review(spec, [films[index]], [cells[index]]):
+        print(f"review formula-cell: {len(flagged)}")
+
+
+def _select(
+    rows: Sequence[ResolvedRow],
+    spec: ServiceSpec,
+    config: LetterboxdConfig,
+    account: Account,
+) -> Selection:
+    """``export_select.select`` on the run's inputs; ``_Refused`` for a bad cutoff."""
+    try:
+        return select(
+            rows,
+            cutoff=config.cutoff,
+            account=account,
+            on_service=spec.on_service,
+            watched_dates=config.watched_date,
+            omit=config.omit,
+        )
+    except CutoffError as error:
+        raise _Refused(str(error)) from None
+
+
 def _run(args: argparse.Namespace, run_git: survey_guard.GitRunner) -> int:
-    """Validate -> act -> record; the number of error entries, or ``_Refused``."""
+    """Validate -> act -> record; the number of error entries, or ``_Refused``.
+
+    A test run records only its one file and counts no error; a dry run records
+    nothing and prints the summary a run would.
+    """
     spec = SERVICES[args.service]
     config = _load_config(args.config, spec)
     rows = _read_rows(args.resolved, spec, config)
     account = _read_account(args.account, spec)
     _check_out(args, run_git)
-    try:
-        selection = select(
-            rows, cutoff=config.cutoff, account=account, on_service=spec.on_service
-        )
-    except CutoffError as error:
-        raise _Refused(str(error)) from None
+    selection = _select(rows, spec, config, account)
     cells = _import_cells(spec, config, selection.films)
+    if args.test_film:
+        _test_run(args, spec, selection.films, cells)
+        return 0
     entries = [*selection.review, *_formula_review(spec, selection.films, cells)]
     texts = _import_texts(args, spec, cells)
     counts = review_counts(
@@ -384,11 +454,14 @@ def _run(args: argparse.Namespace, run_git: survey_guard.GitRunner) -> int:
         rows_cut=selection.cut,
         files=len(texts),
     )
-    review = (
-        review_json(entries, counts=counts),
-        review_markdown(entries, counts=counts),
-    )
-    _record(args, spec, import_files(spec, texts), review, counts)
+    if args.dry_run:
+        print("\n".join(summary_lines(counts)))
+    else:
+        review = (
+            review_json(entries, counts=counts),
+            review_markdown(entries, counts=counts),
+        )
+        _record(args, spec, import_files(spec, texts), review, counts)
     return sum(1 for entry in entries if entry.kind in ERROR_KINDS)
 
 
@@ -412,7 +485,13 @@ def main(
         print(f"{parser.prog}: {refused}", file=sys.stderr)
         return _EXIT_USAGE
     if errors:
-        print(f"{parser.prog}: {errors} error item(s); see review.md", file=sys.stderr)
+        # A dry run wrote no review.md to point at.
+        where = (
+            "rerun without --dry-run to write review.md"
+            if args.dry_run
+            else "see review.md"
+        )
+        print(f"{parser.prog}: {errors} error item(s); {where}", file=sys.stderr)
         return _EXIT_ERRORS
     return _EXIT_OK
 

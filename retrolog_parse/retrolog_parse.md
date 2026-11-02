@@ -113,7 +113,7 @@ naming the key, such as `ratings.color_tolerance: must be an integer from 0 to 4
 A rule's `file` is relative to `--path`, with `/` separators, and must name a file the
 run finds: one that names no file is a `rule-file-missing` error. Copy a line's
 `expect` text from the `text` field of its item in `review.json`, never from
-`review.md`, which escapes markup characters such as `|` and `*` and trims the
+`review.md`, which escapes markup characters such as `|` and `<` and trims the
 line so its tables render.
 
 ### How an entry is dated
@@ -134,7 +134,8 @@ the day.
 
 ## Review kinds
 
-`review.md` opens with a count line, `<n> review items, <e> of them errors.`, then has
+`review.md` opens with a count line, `<n> review items, <e> of them errors.` (`1 review
+item` and `1 of them an error` for a count of one), then has
 one table per kind that occurred, in the order of the table below, so errors come
 first. Each table's heading is the kind and its item count, with `, error` added for
 an error kind: `## unrated (2)`, `## read-error (1, error)`. `review.json` holds the
@@ -150,7 +151,7 @@ file), the line's text and a short detail.
 | `term-mismatch` | yes | A term block's first line does not read its `expect` text. The block's date was still applied. | Fix the block's `lines` or `expect`. |
 | `unparsed` | no | No entry, heading or section could be read from the line. | Ignore it, or add a heading pattern or a `skip` override. |
 | `unrated` | no | The row has no rating. It is still written, unrated. | Rate it by hand later, or add a `rating` override. |
-| `unplaced` | no | No rule dates the entry; it is in `<medium>-undated.csv`. | Add a `[[terms]]` block, a break word or a folder pattern. |
+| `unplaced` | no | No rule dates the entry; it is in `<medium>-undated.csv`. | Add a `[[terms]]` block, an `earlier_words` or `later_words` word, or a folder pattern. |
 | `color-outlier` | no | A mark's color is near no rules color, or equally near two. The detail names the glyph and the color, such as `mark Wingdings/F06C in 3A7FD0`. | Add that color to `colors`, or widen `color_tolerance`. |
 | `shape-conflict` | no | A mark's glyph may not carry the rating its color gives. The color decided. The detail names the glyph, the color and that rating. | Check the line; correct that glyph's `[shapes]` entry or add an override. |
 | `unknown-code` | no | The letter code after the dash is not one the rules define; it stays in the title. | Add a `rating`, `unrated` or `title` override. |
@@ -172,7 +173,7 @@ are dated, a later line in the same file, or a later file name when either is un
 
 | File | Holds |
 | --- | --- |
-| `<medium>-<year>.csv` | The rows of one medium dated in one year, such as `film-2023.csv`. |
+| `<medium>-<year>.csv` | The rows of one medium dated in one year, such as `film-2023.csv`; the year is not padded, so `dates.century = 100` can give `film-150.csv`. |
 | `<medium>-undated.csv` | The rows no rule could date. |
 | `review.json` | `schema_version` (`1`), `counts` (every kind, zero included) and `items`, ordered by file, line and kind. |
 | `review.md` | The same items as tables, one per kind, for reading. |
@@ -183,6 +184,9 @@ Each file is replaced atomically. A re-run removes every file named
 `film`), that it did not write this time, so a CSV whose rows have moved does not
 linger. A link of that name is removed, not followed. It never removes a folder, a
 CSV named for anything else (`notes-2020.csv`, `keep-me.csv`) or any other file.
+`retrolog_resolve` finds these files by `parse_output.CSV_NAME`, the one pattern that
+matches every CSV name parse writes, and `retrolog_export` finds resolve's copies,
+which keep parse's names, by the same pattern.
 
 Each CSV is UTF-8 with a header row, rows sorted by date, then file, then line. Dates
 are ISO (`2023-12-31`), booleans `true` or `false`, and an empty cell means no value.

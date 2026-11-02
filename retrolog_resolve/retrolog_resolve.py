@@ -3,21 +3,23 @@
 The third step of the retrolog tools (survey, parse, resolve, export). It reads the
 CSV files ``retrolog_parse`` wrote to ``--parsed`` without writing there, applies the
 operator's overrides file, looks each distinct book title up on Open Library and each
-film title on TMDb, and writes every CSV back to ``--out`` with four columns added,
+film title on TMDb, and writes every CSV back to ``--out`` with six columns added,
 plus ``review.json`` and ``review.md``. Every answer is cached under ``<out>/cache``,
-so a re-run after editing the overrides sends nothing.
+so a re-run after editing the overrides sends only what no earlier run had answered:
+a new override's ``tmdb_id`` details, the search for a title whose override was
+removed, and any request that failed.
 
 The stages live in ``src/`` beside this file; the sibling retrolog_parse's ``src/``
 supplies the CSV columns and title matching, and retrolog_survey's the output guard
-and atomic writes. All three, and the shared bounded_fetch utility, are put on
-``sys.path`` from this file's own location, so the tool can be moved.
+and atomic writes. All three are put on ``sys.path`` from this file's own location,
+and the shared libraries (bounded_fetch among them) through the project's bootstrap,
+so the tool can be moved.
 ``retrolog_resolve.md`` describes the tool, its overrides file and its output.
 """
 
 from __future__ import annotations
 
 import argparse
-import math
 import os
 import sys
 import time
@@ -47,6 +49,7 @@ SOURCE_DIRS = (
 )
 sys.path[:0] = [str(folder) for folder in SOURCE_DIRS if str(folder) not in sys.path]
 
+import resolve_args  # noqa: E402 - after the src/ inserts
 import resolve_http  # noqa: E402 - after the src/ inserts
 import survey_guard  # noqa: E402 - after the src/ inserts
 from resolve_input import InputError, read_parsed  # noqa: E402 - after the inserts
@@ -91,6 +94,8 @@ _DEFAULT_TIMEOUT = 15.0
 # A colliding film goes to the most-voted when it has this many times the
 # runner-up's votes.
 _DEFAULT_VOTE_RATIO = 10.0
+# A single exact title with fewer TMDb votes than this goes to review.
+_DEFAULT_VOTE_FLOOR = 1
 _CACHE_DIR = "cache"
 # What a CSV this tool writes is named like, per medium, so a re-run can remove one
 # that parse no longer writes: "<medium>-<year>.csv". A single-medium run removes only
@@ -110,33 +115,6 @@ class _Refused(Exception):
     """The run may not start or finish; the message names no path and no secret."""
 
 
-def _positive(text: str) -> float:
-    """An argparse type: a number of seconds greater than zero."""
-    value = float(text)
-    if value <= 0:
-        raise argparse.ArgumentTypeError("must be greater than 0")
-    return value
-
-
-_VOTE_RATIO_RULE = "must be 0 or a finite number above 1"
-
-
-def _vote_ratio(text: str) -> float:
-    """An argparse type: 0 (the most-votes rule off), or a finite number above 1.
-
-    A ratio of 1 or below would let a film with barely more votes win a collision,
-    and an infinite or NaN one would never compare as meant.
-    """
-    try:
-        value = float(text)
-    except ValueError:
-        # argparse would otherwise name this function in its message.
-        raise argparse.ArgumentTypeError(_VOTE_RATIO_RULE) from None
-    if value != 0 and not (math.isfinite(value) and value > 1):
-        raise argparse.ArgumentTypeError(_VOTE_RATIO_RULE)
-    return value
-
-
 _EPILOG = (
     "Prerequisites: Python 3.12 or later, standard library only (nothing to "
     "install); retrolog_parse's output folder; for film rows, a TMDb API read "
@@ -148,10 +126,11 @@ _EPILOG = (
     "it can reach the operator.\n\n"
     "Run order: after retrolog_parse (read its review.md first), before "
     "retrolog_export; re-run with --overrides until review.md is settled.\n\n"
-    "Exit codes: 0 written, no error in the review - 1 written, but the review "
-    "lists an error (override-unused, override-mismatch or failed) - 2 bad "
-    "arguments, an unreadable parse folder or overrides file, a missing or refused "
-    "token, an unreadable, malformed or too-open token file, an unusable contact, "
+    "Exit codes: 0 means written, with no error in the review. 1 means written, "
+    "but the review lists an error (override-unused, override-mismatch, or "
+    "failed). 2 means bad arguments, an unreadable parse folder or overrides "
+    "file, a missing or refused token, an unreadable, malformed, or too-open "
+    "token file, an unusable contact, "
     "--out refused, or the output could not be written."
 )
 
@@ -203,7 +182,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--vote-ratio",
-        type=_vote_ratio,
+        type=resolve_args.vote_ratio,
         default=_DEFAULT_VOTE_RATIO,
         help="A film whose year-kept candidates hold two or more exact titles "
         "resolves to the most-voted when its TMDb votes are at least this many times "
@@ -211,23 +190,33 @@ def build_parser() -> argparse.ArgumentParser:
         "number above 1. Books never take it.",
     )
     parser.add_argument(
+        "--vote-floor",
+        type=resolve_args.vote_floor,
+        default=_DEFAULT_VOTE_FLOOR,
+        help="A film's single exact title with fewer TMDb votes than this, or an "
+        "unknown count, goes to review instead of settling; 0 turns this one signal "
+        "off. Must be a whole number of 0 or more. Books never take it.",
+    )
+    parser.add_argument(
         "--research",
         action=argparse.BooleanOptionalAction,
         default=True,
         help="Send at most one extra TMDb search per film with no exact title, for "
-        "its title without a leading The, A or An. Books never take it.",
+        "its title without a leading The, A, or An. Books never take it.",
     )
     parser.add_argument(
         "--timeout",
-        type=_positive,
+        type=resolve_args.positive,
         default=_DEFAULT_TIMEOUT,
-        help="Seconds per request or git call.",
+        help="Seconds per request or git call: greater than 0 and at most "
+        f"{resolve_args.MAX_SECONDS:g}.",
     )
     cache = parser.add_mutually_exclusive_group()
     cache.add_argument(
         "--refresh",
         action="store_true",
-        help="Ask every service again, ignoring and rewriting the cache.",
+        help="Ask every service again, ignoring what earlier runs cached and "
+        "rewriting it.",
     )
     cache.add_argument(
         "--cache-only",
@@ -359,6 +348,7 @@ def _resolve(
             tmdb=tmdb,
             directors=args.directors,
             vote_ratio=args.vote_ratio,
+            vote_floor=args.vote_floor,
             research=args.research,
         )
     except resolve_http.TokenRefused as refused:

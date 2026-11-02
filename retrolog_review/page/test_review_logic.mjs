@@ -63,12 +63,20 @@ test("one title in two entries has two keys", () => {
   );
 });
 
-test("a film's typed id is digits only, surrounding space trimmed", () => {
+test("a film's typed id is a TMDb id, surrounding space trimmed", () => {
   assert.deepEqual(review.classifyTypedId("film", "1000003"), {
     tmdb_id: "1000003",
   });
   assert.deepEqual(review.classifyTypedId("film", " 42 "), { tmdb_id: "42" });
-  for (const bad of ["", "12a", "/works/OL1W", "-5", "1 000"]) {
+  for (const bad of [
+    "",
+    "12a",
+    "/works/OL1W",
+    "-5",
+    "1 000",
+    "0603",
+    "12345678901",
+  ]) {
     assert.equal(review.classifyTypedId("film", bad), null, bad);
   }
 });
@@ -85,8 +93,11 @@ test("a book's typed work id must be /works/OL<digits>W", () => {
 test("a book's typed ISBN drops hyphens and spaces and allows a final X", () => {
   const cases = [
     ["978-0-00-000000-2", "9780000000002"],
-    ["0 00 000000 X", "000000000X"],
-    ["000000000x", "000000000X"],
+    ["978-0-306-40615-7", "9780306406157"],
+    ["9790000000001", "9790000000001"],
+    ["0-306-40615-2", "0306406152"],
+    ["0 00 000006 X", "000000006X"],
+    ["000000006x", "000000006X"],
     ["0000000000", "0000000000"],
   ];
   for (const [typed, isbn] of cases) {
@@ -98,6 +109,21 @@ test("a book's typed ISBN drops hyphens and spaces and allows a final X", () => 
     "00000000000",
     "X000000000",
     "97800000000021",
+  ]) {
+    assert.equal(review.classifyTypedId("book", bad), null, bad);
+  }
+});
+
+test("a book's typed ISBN needs the check digit retrolog_review checks", () => {
+  // The same rule as resolve's isbn13_or_none, which --mode overrides applies
+  // to the saved picks: a typo the page let through would refuse the file.
+  for (const bad of [
+    "9780306406158",
+    "978030640615X",
+    "000000000X",
+    "0306406153",
+    "0000000000000",
+    "9770000000002",
   ]) {
     assert.equal(review.classifyTypedId("book", bad), null, bad);
   }
@@ -133,7 +159,7 @@ test("catalog links go to TMDb for a film and Open Library for a book", () => {
 });
 
 test("an id not in its catalog's shape builds no link, so it cannot change host", () => {
-  const films = ["", "1/2", "1000003x", "/works/OL100W", "\u0661"];
+  const films = ["", "1/2", "1000003x", "/works/OL100W", "\u0661", "0603"];
   for (const id of films) assert.equal(review.catalogUrl("film", id), null, id);
   const books = [
     "",
@@ -175,6 +201,9 @@ test("isAnswer accepts exactly the answer shapes a pick may hold", () => {
     {},
     { unresolvable: false },
     { unresolvable: true, tmdb_id: "1" },
+    { tmdb_id: "1", ol_work: "/works/OL1W" },
+    { tmdb_id: "1", isbn13: "0000000000" },
+    { tmdb_id: "1", ol_work: "/works/OL1W", isbn13: "0000000000" },
     { tmdb_id: 1 },
     { tmdb_id: "" },
     { title: "x" },
@@ -326,6 +355,20 @@ test("readData returns null for a missing, corrupt or non-object block", () => {
     );
   for (const text of ["{oops", "[]", "null", "3"]) {
     assert.equal(review.readData(block(text)), null, text);
+  }
+});
+
+test("readData returns null for a schema other than the one Python writes", () => {
+  const { schema, ...unversioned } = sampleData();
+  assert.equal(schema, 1);
+  for (const data of [
+    { ...unversioned, schema: 2 },
+    { ...unversioned, schema: "1" },
+    { ...unversioned, schema: true },
+    unversioned,
+  ]) {
+    const { document } = new JSDOM(pageHtml(data)).window;
+    assert.equal(review.readData(document), null, JSON.stringify(data.schema));
   }
 });
 

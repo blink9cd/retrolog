@@ -1,8 +1,8 @@
 """Tests for the retrolog_resolve command line's most-voted and variant matches.
 
-``--vote-ratio`` reaches the most-votes rule, the summary counts the two new
-review kinds in ``REVIEW_KINDS`` order, and ``review.json`` and ``review.md`` carry the
-candidates' votes; ``--research`` reaches the re-search. As in
+``--vote-ratio`` reaches the most-votes rule, the summary counts the most-voted and
+variant review kinds in ``REVIEW_KINDS`` order, and ``review.json`` and ``review.md``
+carry the candidates' votes; ``--research`` reaches the re-search. As in
 ``test_resolve_cli``, ``main`` runs end to end on a temporary parse folder with a fetch
 answering only the URLs listed, and ``HOME`` points at a temporary folder. Titles are
 invented.

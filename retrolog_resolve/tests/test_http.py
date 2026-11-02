@@ -2,9 +2,9 @@
 
 Every test injects a recording fake in place of ``bounded_fetch.fetch_url`` and a fake
 clock whose ``sleep`` advances it, so nothing waits and nothing reaches the network.
-The fake replaces the fetch wholesale, so that the Authorization header is never
-carried to another host on a redirect is proven by bounded_fetch's own redirect suite
-(``test_bounded_fetch_redirect``), not here. The 429/401 handling and the secrecy
+The fake replaces the fetch wholesale, so bounded_fetch's own redirect suite
+(``test_bounded_fetch_redirect``), not this one, proves that the Authorization header
+is never carried to another host on a redirect. The 429/401 handling and the secrecy
 checks are in ``test_http_status``.
 """
 
@@ -227,6 +227,17 @@ class CacheTest(_ClientCase):
         self.assertEqual(
             (self.cache / resolve_http.cache_key(_OL_URL)).read_bytes(), b'{"docs": []}'
         )
+
+    def test_refresh_serves_a_url_this_run_already_fetched(self) -> None:
+        # A film logged in several years repeats its search URL; --refresh skips only
+        # the entries earlier runs wrote, so the repeat is asked once.
+        service = resolve_http.open_library(None)
+        self.client(FakeFetch(b'{"docs": []}')).get_json(service, _OL_URL)
+        fetch = FakeFetch(_BODY)
+        client = self.client(fetch, refresh=True)
+        self.assertEqual(client.get_json(service, _OL_URL), _DECODED)
+        self.assertEqual(client.get_json(service, _OL_URL), _DECODED)
+        self.assertEqual(len(fetch.calls), 1)
 
     def test_cache_only_miss_fails_without_a_request(self) -> None:
         fetch = FakeFetch()

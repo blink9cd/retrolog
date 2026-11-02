@@ -169,7 +169,7 @@ class ReviewMarkdownTest(unittest.TestCase):
             ]
         )
         lines = text.split("\n")
-        self.assertEqual(lines[2], "3 review items, 1 of them errors.")
+        self.assertEqual(lines[2], "3 review items, 1 of them an error.")
         headings = [line for line in lines if line.startswith("## ")]
         self.assertEqual(headings, ["## failed (1, error)", "## not-found (2)"])
         not_found = lines[lines.index("## not-found (2)") + 4 :]

@@ -42,6 +42,9 @@ from resolve_rows_case import (  # noqa: E402 - after the sys.path inserts above
     ol_url,
 )
 
+# What keeps a single exact title from being held: a release date and votes.
+_SETTLES: dict[str, object] = {"release_date": "1927-01-10", "vote_count": 2500}
+
 
 class BookChainTest(RowsCase):
     """Rule 4 for a book: the query chain, stopping at an exact title with an ISBN."""
@@ -126,7 +129,9 @@ class FilmTest(RowsCase):
         return pages
 
     def test_a_resolved_film_records_its_id_and_year(self) -> None:
-        pages = self._pages(tmdb_result(19, "Metropolis", release_date="1927-01-10"))
+        pages = self._pages(
+            tmdb_result(19, "Metropolis", release_date="1927-01-10", vote_count=2500)
+        )
         out, review = self.run_all(
             [input_row("Metropolis", medium="film")], pages=pages
         )
@@ -149,7 +154,7 @@ class FilmTest(RowsCase):
         self.assertEqual(
             [c.creator for c in review[0].candidates], ["Director One", "Director Two"]
         )
-        resolved = self._pages(tmdb_result(3, "Metropolis"))
+        resolved = self._pages(tmdb_result(3, "Metropolis", **_SETTLES))
         out, _ = self.run_all(
             [input_row("Metropolis", medium="film")],
             pages=resolved,
@@ -158,7 +163,9 @@ class FilmTest(RowsCase):
         self.assertEqual(out[0].cells["creator"], "")
 
     def test_directors_all_also_names_the_chosen_film(self) -> None:
-        pages = self._pages(tmdb_result(3, "Metropolis"), id3="Director Three")
+        pages = self._pages(
+            tmdb_result(3, "Metropolis", **_SETTLES), id3="Director Three"
+        )
         out, _ = self.run_all(
             [input_row("Metropolis", medium="film")], pages=pages, directors="all"
         )
@@ -173,6 +180,7 @@ class FilmTest(RowsCase):
             tmdb=None,
             directors="none",
             vote_ratio=10.0,
+            vote_floor=1,
             research=True,
         )
         self.assertEqual(rows[0].cells["resolve_status"], "failed")
@@ -190,7 +198,7 @@ class FailureTest(RowsCase):
         pages = {
             resolve_films.search_url("Lost Film"): http_error(500),
             resolve_films.search_url("Metropolis"): tmdb_search_payload(
-                tmdb_result(4, "Metropolis")
+                tmdb_result(4, "Metropolis", **_SETTLES)
             ),
         }
         out, review = self.run_all(rows, pages=pages)
@@ -205,7 +213,7 @@ class FailureTest(RowsCase):
         """The director only helps the operator choose, so its loss fails nothing."""
         pages = {
             resolve_films.search_url("Metropolis"): tmdb_search_payload(
-                tmdb_result(4, "Metropolis")
+                tmdb_result(4, "Metropolis", **_SETTLES)
             ),
             resolve_films.credits_url("4"): http_error(503),
         }

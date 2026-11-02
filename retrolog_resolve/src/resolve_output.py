@@ -19,7 +19,7 @@ from dataclasses import asdict
 
 # parse's cell escaping is imported rather than restated: one rule for every review
 # page the tools write, so a fix to it reaches both.
-from parse_output import COLUMNS, escape_cell
+from parse_output import COLUMNS, count_line, escape_cell
 from resolve_columns import RESOLVE_COLUMNS
 from resolve_rows import ERROR_KINDS, REVIEW_KINDS, OutputRow
 from resolve_types import Candidate, RunMedium, ReviewEntry
@@ -82,7 +82,8 @@ def _entry_key(entry: ReviewEntry) -> tuple[str, str, str, tuple[str, ...]]:
 def review_json(entries: Sequence[ReviewEntry], medium: RunMedium = "all") -> str:
     """``{"schema_version", "medium", "counts", "entries"}``, keys sorted.
 
-    ``medium`` is the media the run covered (``--medium``); entries go by title.
+    ``medium`` is the media the run covered (``--medium``); entries are sorted by
+    medium, title, and kind.
     """
     document = {
         "schema_version": SCHEMA_VERSION,
@@ -148,7 +149,7 @@ def review_markdown(entries: Sequence[ReviewEntry], medium: RunMedium = "all") -
     """
     counts = review_counts(entries)
     errors = sum(counts[kind] for kind in ERROR_KINDS)
-    lines = [_TITLE, "", f"{len(entries)} review items, {errors} of them errors."]
+    lines = [_TITLE, "", count_line(len(entries), errors)]
     lines += _scope_lines(medium)
     for kind in REVIEW_KINDS:
         found = [entry for entry in entries if entry.kind == kind]

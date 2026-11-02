@@ -15,7 +15,7 @@ from typing import Literal
 
 # The kinds of list an entry can come from, chosen by the source file's name.
 Medium = Literal["book", "film"]
-# "1".."4" from the rules, or "<key>/<key>" for a split code.
+# A key the rules define, such as "3", or "<key>/<key>" for a split code.
 RatingKey = str
 
 

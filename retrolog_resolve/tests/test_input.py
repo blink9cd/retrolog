@@ -72,7 +72,7 @@ class ReadParsedTest(unittest.TestCase):
                 "book-2011.csv": csv_text([book]),
                 "review.json": "{}",
                 "book-2011.csv.bak": "not read",
-                "book-20111.csv": "not read",
+                "book-2011-copy.csv": "not read",
                 "notes.csv": "not read",
             },
         )
@@ -80,6 +80,34 @@ class ReadParsedTest(unittest.TestCase):
         rows = resolve_input.read_parsed(self.parsed)
         self.assertEqual(
             [r.source_csv for r in rows], ["book-2011.csv", "film-2010.csv"]
+        )
+
+    def test_a_year_before_1000_is_read_in_year_order(self) -> None:
+        # Regression: parse writes film-150.csv for a row dated in the year 150 (its
+        # year is unpadded), which a four-digit name pattern skipped without a word.
+        # Files go in year order, not name order, where "150" sorts after "1499".
+        files = {
+            "film-1500.csv": "1500-01-01",
+            "film-150.csv": "0150-06-01",
+            "film-undated.csv": "",
+            "film-1499.csv": "1499-01-01",
+        }
+        write_parsed(
+            self.parsed,
+            {
+                name: csv_text([parse_row(medium="film", date=date)])
+                for name, date in files.items()
+            },
+        )
+        rows = resolve_input.read_parsed(self.parsed)
+        self.assertEqual(
+            [(r.source_csv, r.date_year) for r in rows],
+            [
+                ("film-150.csv", 150),
+                ("film-1499.csv", 1499),
+                ("film-1500.csv", 1500),
+                ("film-undated.csv", None),
+            ],
         )
 
     def test_rows_keep_their_file_order(self) -> None:
@@ -132,8 +160,8 @@ class ReadParsedTest(unittest.TestCase):
         self.assertEqual(str(caught.exception), "--parsed: holds no film CSV file")
 
     def test_an_unreadable_folder_is_refused_without_its_path(self) -> None:
-        # Regression: the scan sat outside every try, so the PermissionError (and the
-        # absolute path its message carries) escaped and the run exited 1.
+        # The scan's PermissionError, whose message carries the absolute path, must
+        # become the refusal rather than escape and exit 1.
         self.parsed.mkdir()
         denied = PermissionError(13, "Permission denied", str(self.parsed))
         with mock.patch.object(Path, "iterdir", side_effect=denied):
@@ -202,8 +230,8 @@ class ReadParsedTest(unittest.TestCase):
                 self.assertIn("line 2: source_line", message)
 
     def test_an_overlong_year_or_line_is_refused_not_raised(self) -> None:
-        # Regression: int() raises ValueError past 4,300 digits, which escaped
-        # as a traceback instead of the file's refusal.
+        # int() raises ValueError past 4,300 digits, which must become the file's
+        # refusal, not a traceback.
         long = "1" * 5000
         for cells, column in (
             ({"year": long}, "year"),

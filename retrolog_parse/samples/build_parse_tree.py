@@ -5,7 +5,7 @@ Every file is invented, so the sample holds no real list. Run it, parse the tree
 (README.md gives the commands). The tree holds every line shape the parser reads and
 every way a line is dated:
 
-- ``21-22/``, a two-year folder: a file whose name holds a break word, a file a
+- ``21-22/``, a two-year folder: a file whose name holds an earlier word, a file a
   ``[[terms]]`` block dates, and a file with neither, whose rows stay undated;
 - ``23/``, a one-year folder: sections, a split code, a rewatch, a comment, a progress
   note a later file finishes, an override, an unknown code, an unparsed line and a Word
@@ -40,7 +40,7 @@ _TEXT_FILES: dict[str, tuple[str, ...]] = {
     "21-22/autumn books.txt": ("Book One - c", "Book Two - a"),
     # Dated by the [[terms]] block in rules.example.toml, whose expect is line 1.
     "21-22/movies.txt": ("Film One - b", "Film Two - d", "----", "Film Three - c"),
-    # No break word and no term block: these rows stay undated.
+    # No earlier or later word and no term block: these rows stay undated.
     "21-22/more books.txt": ("Book Undated - b",),
     # A season word only: April of the folder's year.
     "23/spring books.txt": ("Long Book - 120/300",),

@@ -1,4 +1,4 @@
-"""Build the one-file review page from its template, stylesheet, script and data.
+"""Build the one-file review page from its template, stylesheet, script, and data.
 
 ``build_page`` replaces three whole marker lines of the template: the stylesheet link
 with a ``<style>`` holding the CSS, the script tag with a classic inline ``<script>``
@@ -69,7 +69,7 @@ def policy(css: str, js: str) -> str:
 
 
 def embed_json(data: Mapping[str, object]) -> str:
-    r"""``data`` as compact ASCII JSON with every ``<`` written ``<``.
+    r"""``data`` as compact ASCII JSON with every ``<`` written ``\u003c``.
 
     ASCII, so a title holding a lone surrogate cannot fail the page's encoding.
     """

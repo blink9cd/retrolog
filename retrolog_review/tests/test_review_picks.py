@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
 import tomllib
 import unittest
@@ -287,7 +288,7 @@ class BuildOverridesTest(unittest.TestCase):
     def test_two_picks_for_one_entry_are_refused(self) -> None:
         self.assertEqual(
             self._pick_refusal(pick("keep"), _other("keep"), pick("keep")),
-            "picks[2]: a second pick for the entry picks[0] names",
+            "picks[2]: a second pick for the entry that picks[0] names",
         )
 
     def test_answer_shape_is_refused(self) -> None:
@@ -324,8 +325,8 @@ class BuildOverridesTest(unittest.TestCase):
     def test_answer_values_are_refused(self) -> None:
         film = {
             "tmdb_id": (
-                [["1"], 1, "", "1a", "\N{FULLWIDTH DIGIT ONE}"],
-                "must be a string of digits",
+                [["1"], 1, "", "1a", "\N{FULLWIDTH DIGIT ONE}", "0603", "1" * 11],
+                "must be a string of 1 to 10 digits with no leading zero",
             ),
             "unresolvable": ([False, "true", 1], "must be true"),
         }
@@ -447,6 +448,19 @@ class TomlStringTest(unittest.TestCase):
         self.assertEqual(tomllib.loads(built.toml)["overrides"][0]["title"], title)
         (only,) = resolve_overrides.load_overrides(built.toml.encode("utf-8"))
         self.assertEqual(only.title_key, parse_rows.title_key(title))
+
+
+class PageShapesTest(unittest.TestCase):
+    def test_the_page_stores_only_the_answer_shapes_picks_accept(self) -> None:
+        # A stored answer the page keeps must be one --mode overrides takes, so its
+        # ID_SHAPES (sorted keys, comma-joined) are _ANSWER_SHAPES' id shapes; the
+        # page checks unresolvable on its own.
+        script = (_TOOL / "page" / "review_storage.js").read_text(encoding="utf-8")
+        found = re.search(r"const ID_SHAPES = \[(.*)\];", script)
+        assert found is not None
+        page = set(re.findall(r'"([^"]*)"', found.group(1)))
+        python = {",".join(sorted(shape)) for shape in review_picks._ANSWER_SHAPES}
+        self.assertEqual(page, python - {"unresolvable"})
 
 
 if __name__ == "__main__":

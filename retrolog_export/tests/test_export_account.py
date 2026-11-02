@@ -16,7 +16,7 @@ from hypothesis import strategies as st
 
 _TESTS = Path(__file__).resolve().parent
 _TOOL = _TESTS.parent
-# The tool's own src/ first, then resolve's, parse's and the survey's: the order
+# The tool's own src/ first, then resolve's, parse's, and the survey's: the order
 # retrolog_export.SOURCE_DIRS puts them on sys.path.
 sys.path[:0] = [
     str(_TOOL / "src"),
@@ -43,9 +43,22 @@ _CENTRAL_RECORD = b"PK\x01\x02"
 _END_RECORD = b"PK\x05\x06"
 
 
+def _parse(text: str) -> frozenset[FilmKey]:
+    """Every film key ``parse_account_csv`` reads from ``text``, its rows merged."""
+    return frozenset(
+        key for row in export_account.parse_account_csv(text) for key in row.keys
+    )
+
+
+def _read(path: Path) -> frozenset[FilmKey]:
+    """Every film ``read_account`` finds at ``path``, in any of its files."""
+    account = export_account.read_account(path)
+    return account.watched | account.logged
+
+
 class ParseAccountCsvTest(unittest.TestCase):
     def test_rows_become_title_key_and_year(self) -> None:
-        keys = export_account.parse_account_csv(account_csv([_ONE, _TWO]))
+        keys = _parse(account_csv([_ONE, _TWO]))
         self.assertEqual(
             keys,
             {FilmKey("placeholder film one", 1999), FilmKey("metropolis", 1927)},
@@ -54,9 +67,7 @@ class ParseAccountCsvTest(unittest.TestCase):
     def test_a_name_is_also_keyed_without_accents_and_with_and(self) -> None:
         # Regression: an accent or an "&" the TMDb title lacked kept the film off
         # the diff, so it was sent and overwrote the live rating.
-        keys = export_account.parse_account_csv(
-            "Name,Year\nPlaceholder Café & Co,1999\n"
-        )
+        keys = _parse("Name,Year\nPlaceholder Café & Co,1999\n")
         self.assertEqual(
             keys,
             {
@@ -66,13 +77,11 @@ class ParseAccountCsvTest(unittest.TestCase):
         )
 
     def test_a_plain_name_gives_one_key(self) -> None:
-        keys = export_account.parse_account_csv("Name,Year\nMetropolis,1927\n")
+        keys = _parse("Name,Year\nMetropolis,1927\n")
         self.assertEqual(keys, {FilmKey("metropolis", 1927)})
 
     def test_empty_or_non_numeric_year_is_none(self) -> None:
-        keys = export_account.parse_account_csv(
-            account_csv([_UNDATED, ("Placeholder Film Three", "19x9")])
-        )
+        keys = _parse(account_csv([_UNDATED, ("Placeholder Film Three", "19x9")]))
         self.assertEqual(
             keys,
             {
@@ -82,7 +91,7 @@ class ParseAccountCsvTest(unittest.TestCase):
         )
 
     def test_non_ascii_digits_and_overlong_years_are_none(self) -> None:
-        keys = export_account.parse_account_csv(
+        keys = _parse(
             account_csv([("Placeholder Film One", "١٩٩٩"), ("Metropolis", "1" * 5000)])
         )
         self.assertEqual(
@@ -91,29 +100,27 @@ class ParseAccountCsvTest(unittest.TestCase):
         )
 
     def test_row_with_an_empty_name_is_skipped(self) -> None:
-        keys = export_account.parse_account_csv(
-            account_csv([("", "2001"), ("?!", "2002"), _TWO])
-        )
+        keys = _parse(account_csv([("", "2001"), ("?!", "2002"), _TWO]))
         self.assertEqual(keys, {FilmKey("metropolis", 1927)})
 
     def test_short_row_is_read_with_what_it_has(self) -> None:
         text = "Name,Year\nMetropolis\n,\n"
-        keys = export_account.parse_account_csv(text)
+        keys = _parse(text)
         self.assertEqual(keys, {FilmKey("metropolis", None)})
 
     def test_other_columns_and_their_order_are_ignored(self) -> None:
         text = account_csv([_TWO], header=("Rating", "Year", "Extra", "Name"))
-        keys = export_account.parse_account_csv(text)
+        keys = _parse(text)
         self.assertEqual(keys, {FilmKey("metropolis", 1927)})
 
     def test_quoted_name_with_a_comma_parses(self) -> None:
         text = account_csv([("Placeholder, the Film", "2003")])
         self.assertIn('"Placeholder, the Film"', text)
-        keys = export_account.parse_account_csv(text)
+        keys = _parse(text)
         self.assertEqual(keys, {FilmKey("placeholder the film", 2003)})
 
     def test_leading_bom_is_accepted(self) -> None:
-        keys = export_account.parse_account_csv("\ufeff" + account_csv([_TWO]))
+        keys = _parse("\ufeff" + account_csv([_TWO]))
         self.assertEqual(keys, {FilmKey("metropolis", 1927)})
 
     def test_header_without_name_or_year_is_refused(self) -> None:
@@ -121,22 +128,22 @@ class ParseAccountCsvTest(unittest.TestCase):
             with self.subTest(header=header):
                 text = ",".join(header) + "\n"
                 with self.assertRaises(export_account.AccountError):
-                    export_account.parse_account_csv(text)
+                    _parse(text)
 
     def test_empty_text_is_refused(self) -> None:
         with self.assertRaises(export_account.AccountError):
-            export_account.parse_account_csv("")
+            _parse("")
 
     def test_invalid_csv_is_refused_without_quoting_it(self) -> None:
         text = 'Name,Year\n"Placeholder Secret Title" trailing,1999\n'
         with self.assertRaises(export_account.AccountError) as caught:
-            export_account.parse_account_csv(text)
+            _parse(text)
         self.assertNotIn("Placeholder Secret Title", str(caught.exception))
 
     @given(st.text(max_size=300))
     def test_fuzz_parse_account_csv(self, text: str) -> None:
         try:
-            keys = export_account.parse_account_csv(text)
+            keys = _parse(text)
         except export_account.AccountError:
             return
         for key in keys:
@@ -164,7 +171,7 @@ class ReadAccountTest(unittest.TestCase):
     def _refusal(self, path: Path) -> str:
         """The AccountError message ``read_account`` gives for ``path``."""
         with self.assertRaises(export_account.AccountError) as caught:
-            export_account.read_account(path)
+            _read(path)
         message = str(caught.exception)
         self.assertNotIn(str(self.root), message)
         self.assertIsNone(caught.exception.__cause__)
@@ -184,16 +191,16 @@ class ReadAccountTest(unittest.TestCase):
             FilmKey("placeholder film two", None),
             FilmKey("placeholder film four", 2004),
         }
-        from_zip = export_account.read_account(self._zip(self.files))
-        from_folder = export_account.read_account(self._folder(self.files))
+        from_zip = _read(self._zip(self.files))
+        from_folder = _read(self._folder(self.files))
         self.assertEqual(from_zip, expected)
         self.assertEqual(from_folder, expected)
 
     def test_only_the_files_present_are_read(self) -> None:
         files: dict[str, str | bytes] = {"ratings.csv": account_csv([_TWO])}
         expected = {FilmKey("metropolis", 1927)}
-        self.assertEqual(export_account.read_account(self._zip(files)), expected)
-        self.assertEqual(export_account.read_account(self._folder(files)), expected)
+        self.assertEqual(_read(self._zip(files)), expected)
+        self.assertEqual(_read(self._folder(files)), expected)
 
     def test_subfolders_and_other_files_are_ignored(self) -> None:
         files: dict[str, str | bytes] = {
@@ -204,15 +211,13 @@ class ReadAccountTest(unittest.TestCase):
             "lists/diary.csv": b"\xff\xfe not utf-8",
         }
         expected = {FilmKey("metropolis", 1927)}
-        self.assertEqual(export_account.read_account(self._zip(files)), expected)
-        self.assertEqual(export_account.read_account(self._folder(files)), expected)
+        self.assertEqual(_read(self._zip(files)), expected)
+        self.assertEqual(_read(self._folder(files)), expected)
 
     def test_a_folder_named_like_an_account_file_is_ignored(self) -> None:
         folder = self._folder({"watched.csv": account_csv([_TWO])})
         (folder / "diary.csv").mkdir()
-        self.assertEqual(
-            export_account.read_account(folder), {FilmKey("metropolis", 1927)}
-        )
+        self.assertEqual(_read(folder), {FilmKey("metropolis", 1927)})
 
     def test_a_zip_directory_entry_named_like_an_account_file_is_ignored(
         self,
@@ -220,9 +225,7 @@ class ReadAccountTest(unittest.TestCase):
         path = self._zip({"watched.csv": account_csv([_TWO])})
         with zipfile.ZipFile(path, "a") as archive:
             archive.writestr(zipfile.ZipInfo("diary.csv/"), b"")
-        self.assertEqual(
-            export_account.read_account(path), {FilmKey("metropolis", 1927)}
-        )
+        self.assertEqual(_read(path), {FilmKey("metropolis", 1927)})
 
     def test_export_holding_no_account_file_is_refused(self) -> None:
         files: dict[str, str | bytes] = {"deleted/watched.csv": account_csv([_TWO])}
@@ -234,8 +237,8 @@ class ReadAccountTest(unittest.TestCase):
             "watched.csv": b"\xef\xbb\xbf" + account_csv([_TWO]).encode()
         }
         expected = {FilmKey("metropolis", 1927)}
-        self.assertEqual(export_account.read_account(self._zip(files)), expected)
-        self.assertEqual(export_account.read_account(self._folder(files)), expected)
+        self.assertEqual(_read(self._zip(files)), expected)
+        self.assertEqual(_read(self._folder(files)), expected)
 
     def test_non_utf8_file_is_refused(self) -> None:
         files: dict[str, str | bytes] = {"diary.csv": b"Name,Year\n\xff\xfe,1999\n"}
@@ -267,7 +270,7 @@ class ReadAccountTest(unittest.TestCase):
             mock.patch.object(zipfile.ZipFile, "infolist", return_value=[info]),
             mock.patch.object(zipfile.ZipFile, "open", return_value=body),
         ):
-            keys = export_account.read_account(path)
+            keys = _read(path)
         self.assertEqual(keys, {FilmKey("metropolis", 1927)})
 
     def test_member_whose_header_lies_is_capped_while_reading(self) -> None:
@@ -294,7 +297,7 @@ class ReadAccountTest(unittest.TestCase):
         text = account_csv([_TWO])
         folder = self._folder({"watched.csv": text})
         with mock.patch.object(export_account, "MEMBER_LIMIT", len(text.encode())):
-            keys = export_account.read_account(folder)
+            keys = _read(folder)
         self.assertEqual(keys, {FilmKey("metropolis", 1927)})
 
     def test_unreadable_zip_is_refused(self) -> None:
@@ -345,9 +348,7 @@ class ReadAccountTest(unittest.TestCase):
         path = self.root / "stored.zip"
         with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_STORED) as archive:
             archive.writestr("watched.csv", account_csv([_TWO]))
-        self.assertEqual(
-            export_account.read_account(path), {FilmKey("metropolis", 1927)}
-        )
+        self.assertEqual(_read(path), {FilmKey("metropolis", 1927)})
 
     def test_damaged_member_is_refused(self) -> None:
         path = self._zip(self.files)

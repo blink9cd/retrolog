@@ -9,6 +9,7 @@ held.
 from __future__ import annotations
 
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from typing import TypedDict, Unpack
@@ -25,11 +26,18 @@ sys.path[:0] = [
     str(_TOOL),
 ]
 import export_account  # noqa: E402 - after the sys.path inserts above
+import export_input  # noqa: E402 - after the sys.path inserts above
 import export_select  # noqa: E402 - after the sys.path inserts above
+from export_fixtures import (  # noqa: E402 - after the sys.path inserts above
+    csv_text,
+    resolved_row,
+    write_resolved,
+)
 from export_types import FilmKey, ResolvedRow  # noqa: E402 - after the inserts
 from parse_rows import title_key  # noqa: E402 - after the sys.path inserts above
 from select_case import (  # noqa: E402 - after the sys.path inserts above
     FilmIdentity,
+    imported,
     kinds,
     make_row,
     select,
@@ -51,7 +59,11 @@ def _real(
 ) -> export_select.Selection:
     """``select`` with export_account's own ``on_service``, as the CLI runs it."""
     return export_select.select(
-        rows, cutoff=None, account=account, on_service=export_account.on_service
+        rows,
+        cutoff=None,
+        account=imported(account),
+        on_service=export_account.on_service,
+        watched_dates=True,
     )
 
 
@@ -125,6 +137,44 @@ class TmdbTitleTest(unittest.TestCase):
         self.assertEqual([entry.kind for entry in chosen.review], ["by-title"])
 
 
+class OverrideDetailsTest(unittest.TestCase):
+    """An override row resolve filled from TMDb's details is checked by its titles.
+
+    Read from a CSV as resolve writes one: the list's title, a year resolve took from
+    the details, and both TMDb titles beside the override's id.
+    """
+
+    def _override_row(self) -> list[ResolvedRow]:
+        """The override row, read back through ``export_input.read_resolved``."""
+        row = resolved_row(
+            title="Placeholder Night",
+            year="1999",
+            resolve_status="override",
+            tmdb_id="1000021",
+            tmdb_title="Placeholder Nights",
+            tmdb_original_title="Nuits Factices",
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = write_resolved(Path(tmp), {"film-2010.csv": csv_text([row])})
+            return list(export_input.read_resolved(folder, "film"))
+
+    def test_it_is_skipped_when_the_account_holds_its_tmdb_title(self) -> None:
+        account = frozenset({FilmKey("placeholder nights", 1999)})
+        chosen = _real(self._override_row(), account)
+        self.assertEqual(chosen.films, ())
+        self.assertEqual(kinds(chosen), [("on-service", ("10/seen.txt:1",))])
+
+    def test_it_is_skipped_when_the_account_holds_its_original_title(self) -> None:
+        account = frozenset({FilmKey("nuits factices", 1999)})
+        self.assertEqual(_real(self._override_row(), account).films, ())
+
+    def test_a_same_titled_film_of_another_year_does_not_skip_it(self) -> None:
+        account = frozenset({FilmKey("placeholder night", 2015)})
+        chosen = _real(self._override_row(), account)
+        self.assertEqual(sent(chosen), ["10/seen.txt:1"])
+        self.assertNotIn("override-unchecked", [e.kind for e in chosen.review])
+
+
 class OnServiceDetailTest(unittest.TestCase):
     """The detail says a match was by title alone whichever side lacked a year."""
 
@@ -133,8 +183,11 @@ class OnServiceDetailTest(unittest.TestCase):
         chosen = _real([make_row(year=None)], account)
         [entry] = chosen.review
         self.assertEqual(entry.kind, "on-service")
-        self.assertIn("title alone", entry.detail)
-        self.assertIn("row has no year", entry.detail)
+        self.assertEqual(
+            entry.detail,
+            "an earlier import sent it, so not sent again; the row has no year, so "
+            "matched by title alone",
+        )
 
     def test_an_exact_match_does_not_say_title_alone(self) -> None:
         account = frozenset({FilmKey("placeholder film one", 1999)})
@@ -246,7 +299,8 @@ class FoldedTitleTest(unittest.TestCase):
 
     def _account(self, name: str) -> frozenset[FilmKey]:
         """The account export's keys for one film of ``name`` in 1999."""
-        return export_account.parse_account_csv(f"Name,Year\n{name},1999\n")
+        rows = export_account.parse_account_csv(f"Name,Year\n{name},1999\n")
+        return frozenset(key for row in rows for key in row.keys)
 
     def _row(self, title: str, **changes: Unpack[_Untitled]) -> ResolvedRow:
         """A row of ``title`` in 1999, its title key as parse gives it."""

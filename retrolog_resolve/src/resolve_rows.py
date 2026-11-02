@@ -12,34 +12,42 @@
 3. A title-only override for the group's medium and title decides it, with no request.
 4. Otherwise a book runs the Open Library query chain, then ``resolve_match.verdict``,
    and a film ``resolve_film_lookup.film_lookup``: the TMDb search, judged with
-   ``vote_ratio``, one more search without a leading article when
+   ``vote_ratio`` and ``vote_floor``, one more search without a leading article when
    ``research`` is on and no title was exact, then the credits ``directors``
    names. A film resolved by the most-votes rule, a variant or the re-search is
-   listed under a review kind of its own, and its listed candidates get credits just
+   listed under a review kind of its own, and so is a single exact title held as
+   suspect, which stays ``ambiguous``; their listed candidates get credits just
    as an ambiguous film's do. A ``LookupFailed`` in a group's search makes that group
    ``failed`` and the run goes on (a failed re-search or credits request only notes
    it in the detail); ``TokenRefused`` propagates to the caller.
-5. Every override that settled no row, and was not a mismatch, is ``override-unused``.
+5. Every row an override settled by a ``tmdb_id`` takes TMDb's details for that id,
+   one request per distinct id (``resolve_film_lookup.override_details``), as its
+   candidate: its TMDb titles and an empty ``year`` are filled from them as a
+   resolved film's are. A failed or unusable answer leaves the row as the override
+   set it; the status stays ``override``.
+6. Every override that settled no row, and was not a mismatch, is ``override-unused``.
 
 Every input row comes out once, in input order, its parse cells unchanged apart from
 ``creator`` and an empty ``year``, which the chosen candidate fills. The search URLs
-are built by each service module from the title alone; one bounded_fetch would refuse
-(not https, not printable ASCII) raises its ``ValueError`` inside the Client, which
+are built by each service module from the title alone; a URL bounded_fetch would
+refuse (not https, not printable ASCII) raises its ``ValueError`` inside the Client, which
 turns it into ``LookupFailed``, so such a title fails its group rather than the run.
 """
 
 from __future__ import annotations
 
+import dataclasses
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from types import MappingProxyType
 
 import resolve_books as books
 from resolve_columns import RESOLVE_COLUMNS as RESOLVE_COLUMNS
-from resolve_film_lookup import film_lookup
+from resolve_film_lookup import film_lookup, override_details
 from resolve_http import Client, LookupFailed, Service
 from resolve_match import exact, filter_years, verdict
 from resolve_types import (
+    HELD_BASIS,
     Candidate,
     Directors,
     InputRow,
@@ -57,6 +65,7 @@ REVIEW_KINDS = (
     "override-mismatch",
     "failed",
     "ambiguous",
+    HELD_BASIS,
     "not-found",
     "most-voted",
     "variant",
@@ -69,13 +78,15 @@ ERROR_KINDS = frozenset({"override-unused", "override-mismatch", "failed"})
 # resolve_columns so a reader of resolve's CSVs need not import this one; it is
 # re-exported above (the "as" form) for the callers that read it from here.
 # The id columns an override can set, named as its fields are; the TMDb title columns
-# after them come only from a chosen candidate.
+# after them come only from a chosen candidate: a resolved film's, or the details
+# TMDb gave for an override's tmdb_id.
 _ID_COLUMNS = ("isbn13", "ol_work", "tmdb_id")
 _FILLED_COLUMNS = RESOLVE_COLUMNS[1:]
 _FIRST_STEP: books.Step = "edition-by-year"
 # What each lookup status adds to the review; "resolved" adds an entry only for a film
 # a loosened rule resolved (kind = its basis) or a book with no ISBN, and
-# "override" adds its entry per override instead.
+# "override" adds its entry per override instead. A held film is "ambiguous" by status
+# and files under HELD_BASIS instead, so _review_lookup asks about it first.
 _LOOKUP_KINDS: Mapping[Status, str] = {
     "failed": "failed",
     "ambiguous": "ambiguous",
@@ -97,7 +108,10 @@ class OutputRow:
 
 @dataclass(frozen=True)
 class _Outcome:
-    """What one row came to: its status and the candidate or override behind it."""
+    """What one row came to: its status, and the candidate and override behind it.
+
+    An override row's candidate, when it has one, is TMDb's details for its id.
+    """
 
     status: Status
     chosen: Candidate | None = None
@@ -229,7 +243,8 @@ def _lookup(row: InputRow, services: Services) -> Lookup:
 
 def _review_lookup(tally: _Tally, indexes: Sequence[int], lookup: Lookup) -> None:
     """Add the review entry a lookup's status calls for, if any."""
-    kind = _LOOKUP_KINDS.get(lookup.status)
+    held = lookup.basis == HELD_BASIS
+    kind = HELD_BASIS if held else _LOOKUP_KINDS.get(lookup.status)
     if kind is not None:
         tally.review(kind, indexes, lookup.detail, lookup.shown)
         return
@@ -259,7 +274,30 @@ def _decide_groups(
 
 
 # ---------------------------------------------------------------------------
-# Rule 5 and the overrides' own review entries
+# Rule 5: an override's TMDb details
+# ---------------------------------------------------------------------------
+
+
+def _add_override_details(tally: _Tally, services: Services) -> None:
+    """Give each row an override settled by a ``tmdb_id`` that film's details.
+
+    Only a film override can name a ``tmdb_id`` (the overrides loader refuses one on
+    a book), so a book never sends this request. Rows go in input order, and each
+    distinct id is asked for once, even when no cache is kept.
+    """
+    found: dict[str, Candidate | None] = {}
+    for index, outcome in sorted(tally.outcomes.items()):
+        override = outcome.override
+        if override is None or override.tmdb_id is None:
+            continue
+        tmdb_id = override.tmdb_id
+        if tmdb_id not in found:
+            found[tmdb_id] = override_details(tmdb_id, services)
+        tally.outcomes[index] = dataclasses.replace(outcome, chosen=found[tmdb_id])
+
+
+# ---------------------------------------------------------------------------
+# Rule 6 and the overrides' own review entries
 # ---------------------------------------------------------------------------
 
 
@@ -315,10 +353,11 @@ def _review_overrides(tally: _Tally, overrides: Sequence[ResolveOverride]) -> No
 
 
 def _ids(row: InputRow, outcome: _Outcome) -> dict[str, str]:
-    """The id and TMDb title columns: from the override, else the chosen candidate.
+    """The id columns from the override, else the chosen candidate; then the titles.
 
-    An override names no candidate, so its row's TMDb titles stay empty; so do a
-    book's, and an unresolved row's.
+    A film's TMDb titles come from its candidate: the one its lookup chose, or the
+    details an override's ``tmdb_id`` fetched. They stay empty for a book, an
+    unresolved row, and an override with no details (unresolvable, or failed).
     """
     ids = dict.fromkeys(_FILLED_COLUMNS, "")
     override, chosen = outcome.override, outcome.chosen
@@ -331,11 +370,9 @@ def _ids(row: InputRow, outcome: _Outcome) -> dict[str, str]:
     elif chosen is not None and row.medium == "book":
         ids.update(isbn13=chosen.isbn13, ol_work=chosen.id)
     elif chosen is not None:
-        ids.update(
-            tmdb_id=chosen.id,
-            tmdb_title=chosen.title,
-            tmdb_original_title=chosen.original_title,
-        )
+        ids.update(tmdb_id=chosen.id)
+    if chosen is not None and row.medium == "film":
+        ids.update(tmdb_title=chosen.title, tmdb_original_title=chosen.original_title)
     return ids
 
 
@@ -362,19 +399,24 @@ def resolve_all(
     tmdb: Service | None,
     directors: Directors,
     vote_ratio: float,
+    vote_floor: int,
     research: bool,
 ) -> tuple[tuple[OutputRow, ...], tuple[ReviewEntry, ...]]:
     """Every row with its outcome, in input order, and the review entries.
 
     ``tmdb`` None fails every film lookup (no token was given). ``vote_ratio`` is the
-    most-votes rule's ratio, 0 turning it off, and ``research`` turns the
-    second search on; books never take either. Raises
+    most-votes rule's ratio, 0 turning it off, ``vote_floor`` the votes under which
+    a film's single exact title is held for review, 0 turning that signal off, and
+    ``research`` turns the second search on; books never take any of them. Raises
     ``TokenRefused`` when TMDb refuses the token; every other failure is a row's.
     """
     tally = _Tally(rows)
-    services = Services(client, open_library, tmdb, directors, vote_ratio, research)
+    services = Services(
+        client, open_library, tmdb, directors, vote_ratio, vote_floor, research
+    )
     _apply_line_overrides(tally, overrides)
     _decide_groups(tally, overrides, services)
+    _add_override_details(tally, services)
     _review_overrides(tally, overrides)
     written = tuple(
         _output_row(row, tally.outcomes[index]) for index, row in enumerate(rows)

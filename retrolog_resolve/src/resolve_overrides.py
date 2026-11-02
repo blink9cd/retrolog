@@ -19,6 +19,7 @@ from collections.abc import Mapping
 import parse_checks as checks
 from parse_checks import RulesError
 from parse_rows import title_key
+from resolve_columns import TMDB_ID
 from resolve_isbn import isbn13_or_none
 from resolve_types import Medium, ResolveOverride
 
@@ -35,7 +36,6 @@ _MEDIUM_IDS: Mapping[Medium, frozenset[str]] = {
 _OTHER_MEDIUM: Mapping[Medium, str] = {"book": "a film", "film": "a book"}
 # ASCII only: \d would also accept other scripts' digits, which no id is written in.
 _OL_WORK = re.compile(r"/works/OL[0-9]+W")
-_TMDB_ID = re.compile(r"[0-9]+")
 # The key an entry's (medium, title_key, file, line) scope is compared by.
 _Scope = tuple[str, str, str | None, int | None]
 
@@ -94,7 +94,7 @@ def _check_id_keys(where: str, medium: Medium, entry: Mapping[str, object]) -> N
     ids = [key for key in given if key != "unresolvable"]
     if ("unresolvable" in entry) == bool(ids):
         raise OverridesError(
-            f"{where}: needs exactly one of isbn13, ol_work, tmdb_id or unresolvable"
+            f"{where}: needs exactly one of isbn13, ol_work, tmdb_id, or unresolvable"
         )
     if "unresolvable" in entry and entry["unresolvable"] is not True:
         raise OverridesError(f"{where}.unresolvable: must be true")
@@ -127,7 +127,7 @@ def _isbn13(where: str, entry: Mapping[str, object]) -> str | None:
 _ID_SHAPES: Mapping[str, str] = {
     "isbn13": "a string holding an ISBN-13 or ISBN-10 with a valid check digit",
     "ol_work": "a string /works/OL<digits>W",
-    "tmdb_id": "a string of digits",
+    "tmdb_id": "a string of 1 to 10 digits with no leading zero",
 }
 
 
@@ -149,7 +149,7 @@ def _entry(index: int, value: object) -> ResolveOverride:
         line=line,
         isbn13=_isbn13(where, entry),
         ol_work=_id_value(where, entry, "ol_work", _OL_WORK),
-        tmdb_id=_id_value(where, entry, "tmdb_id", _TMDB_ID),
+        tmdb_id=_id_value(where, entry, "tmdb_id", TMDB_ID),
         unresolvable="unresolvable" in entry,
     )
 

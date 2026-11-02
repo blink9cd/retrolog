@@ -1,10 +1,11 @@
 """Look one film title up on TMDb: the search, the re-search, then the credits.
 
-``film_lookup`` is the entry point, and ``resolve_rows`` its only caller. It sends the
-title search, judges it with ``resolve_match.film_verdict``, sends
-at most one more search under the title without a leading article when that found no
-exact title (``research_query`` and ``research_verdict``), and then the credits
-requests ``--directors`` asks for. Every request goes through the run's one
+``film_lookup`` is the entry point, and ``resolve_rows`` its only caller; that
+module also calls ``override_details``, for a row an override settled by its TMDb id.
+``film_lookup`` sends the title search, judges it with ``resolve_match.film_verdict``,
+sends at most one more search under the title without a leading article when that
+found no exact title (``research_query`` and ``research_verdict``), and then the
+credits requests ``--directors`` asks for. Every request goes through the run's one
 ``Client``, so each is cached by its URL.
 """
 
@@ -41,8 +42,8 @@ def _directed(
     Client never caches the failure, so a re-run asks again. ``TokenRefused`` is not
     a ``LookupFailed`` and still ends the run.
 
-    ``credits_url`` refuses an id that is not ASCII digits, and ``parse_search``
-    builds every film candidate's id from a non-negative integer, so it never does.
+    ``credits_url`` refuses an id that is not a TMDb id, and ``parse_search`` keeps
+    only a candidate whose id is one, so it never does.
     """
     try:
         payload = services.client.get_json(tmdb, films.credits_url(candidate.id))
@@ -54,8 +55,9 @@ def _directed(
 def _lists_candidates(lookup: Lookup) -> bool:
     """Whether ``lookup``'s review entry lists candidates for the operator to check.
 
-    An ambiguous film's do, and so do a film's the most-votes rule, a variant or the
-    re-search resolved: none of those was a single exact title.
+    An ambiguous film's do, a held single exact title's among them, and so do a film's
+    the most-votes rule, a variant or the re-search resolved: none of those settled on
+    a single exact title.
     """
     return lookup.status == "ambiguous" or lookup.basis != "exact"
 
@@ -113,6 +115,28 @@ def _researched(
     return first if again is None else again
 
 
+def override_details(tmdb_id: str, services: Services) -> Candidate | None:
+    """TMDb's details for the film ``tmdb_id`` names, or None when they cannot be read.
+
+    An override names only an id, so its row's TMDb titles (and an empty year) come
+    from these. Like a credits request, a failure is the row's titles' loss alone:
+    no token given, a ``LookupFailed`` (a cache miss under ``--cache-only`` included)
+    or an unusable body all read as None and leave the row as the override set it.
+    ``TokenRefused`` is not a ``LookupFailed`` and still ends the run.
+
+    ``details_url`` refuses an id that is not a TMDb id, and the overrides loader
+    refuses such a ``tmdb_id`` by the same rule, so it never does.
+    """
+    tmdb = services.tmdb
+    if tmdb is None:
+        return None
+    try:
+        payload = services.client.get_json(tmdb, films.details_url(tmdb_id))
+    except LookupFailed:
+        return None
+    return films.parse_details(payload, tmdb_id)
+
+
 def film_lookup(row: InputRow, services: Services) -> Lookup:
     """The TMDb search for ``row``'s title, judged, maybe searched again, then credits.
 
@@ -131,6 +155,7 @@ def film_lookup(row: InputRow, services: Services) -> Lookup:
         work_year=work_year,
         date_year=date_year,
         vote_ratio=services.vote_ratio,
+        vote_floor=services.vote_floor,
     )
     query = research_query(
         lookup,

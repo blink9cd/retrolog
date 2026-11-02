@@ -1,6 +1,6 @@
 # retrolog_resolve review
 
-15 review items, 3 of them errors.
+16 review items, 3 of them errors.
 
 ## override-unused (1, error)
 
@@ -26,6 +26,12 @@
 | --- | --- | --- | --- | --- |
 | book | Placeholder Book Four | 2010/read.txt:5 | 2 exact titles | Placeholder Book Four, 1901, Author Four, /works/OL1000013W; Placeholder Book Four, 1901, Author Five, /works/OL1000014W |
 | film | Placeholder Film Two | 2010/seen.txt:10 | 2 exact titles | Placeholder Film Two, 1999, Director Four, 1000004; Placeholder Film Two, 2008, Director Five, 1000005 |
+
+## suspect-exact (1)
+
+| Medium | Title | Rows | Detail | Candidates |
+| --- | --- | --- | --- | --- |
+| film | Placeholder Film Seven | 2010/seen.txt:16 | one exact title, held: no release date; 0 votes, under the floor of 1 | Placeholder Film Seven, Director Ten, 1000016, 0 votes |
 
 ## not-found (2)
 

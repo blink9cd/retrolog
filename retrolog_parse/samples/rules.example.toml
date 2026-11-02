@@ -1,4 +1,4 @@
-# An example rules file for retrolog_parse. Copy it next to your notes (never into a
+# An example rules file for retrolog_parse. Copy it next to your lists (never into a
 # repository: a real one describes your own lists), then change every value to match
 # how your lists are written. Every value below is a generic example, and as written
 # it reads the synthetic sample tree that build_parse_tree.py writes.

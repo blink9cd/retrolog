@@ -236,6 +236,7 @@ def _film_verdict(
     title: str,
     *,
     vote_ratio: float = 10.0,
+    vote_floor: int = 1,
     work_year: int | None = None,
     date_year: int | None = 2010,
 ) -> resolve_match.Lookup:
@@ -247,6 +248,7 @@ def _film_verdict(
         work_year=work_year,
         date_year=date_year,
         vote_ratio=vote_ratio,
+        vote_floor=vote_floor,
     )
 
 
@@ -422,6 +424,7 @@ class FilmVerdictVariantTest(unittest.TestCase):
         st.none() | st.integers(1800, 2100),
         st.none() | st.integers(1800, 2100),
         st.sampled_from((0.0, 1.5, 10.0)),
+        st.sampled_from((0, 1, 50)),
     )
     def test_fuzz_film_verdict(
         self,
@@ -430,6 +433,7 @@ class FilmVerdictVariantTest(unittest.TestCase):
         work_year: int | None,
         date_year: int | None,
         vote_ratio: float,
+        vote_floor: int,
     ) -> None:
         lookup = resolve_match.film_verdict(
             cands,
@@ -438,13 +442,30 @@ class FilmVerdictVariantTest(unittest.TestCase):
             work_year=work_year,
             date_year=date_year,
             vote_ratio=vote_ratio,
+            vote_floor=vote_floor,
         )
         self.assertLessEqual(len(lookup.shown), resolve_match.SHOWN)
+        key = title_key(title)
         if lookup.status == "resolved":
-            self.assertIn(lookup.chosen, cands)
+            chosen = lookup.chosen
+            self.assertIn(chosen, cands)
+            if chosen is not None and lookup.basis == "exact":
+                # A resolved exact result never has any reason to be held.
+                self.assertEqual(
+                    resolve_match.suspect_reasons(chosen, key, vote_floor=vote_floor),
+                    (),
+                )
         else:
             self.assertIsNone(lookup.chosen)
-            self.assertEqual(lookup.basis, "exact")
+            if lookup.basis == "suspect-exact":
+                # A held film lists the one exact title, with at least one reason.
+                self.assertEqual(lookup.status, "ambiguous")
+                (held,) = lookup.shown
+                self.assertTrue(
+                    resolve_match.suspect_reasons(held, key, vote_floor=vote_floor)
+                )
+            else:
+                self.assertEqual(lookup.basis, "exact")
 
 
 if __name__ == "__main__":
