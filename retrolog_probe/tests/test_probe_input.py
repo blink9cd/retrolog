@@ -10,6 +10,8 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from typing import IO
+from unittest import mock
 
 from hypothesis import given
 from hypothesis import strategies as st
@@ -31,6 +33,30 @@ from probe_fixtures import import_row, write_import  # noqa: E402 - after the in
 
 # csv's field limit when nothing has raised it, the one probe read with before.
 _CSV_DEFAULT_FIELD_LIMIT = 131_072
+
+
+def _mode_000_locks_a_file() -> bool:
+    """True when ``chmod(0)`` stops this process reading a file.
+
+    Root can read a mode-000 file, and on Windows ``chmod`` sets only the read-only
+    attribute, which never stops a read. Probed rather than
+    inferred from the platform, so the real-permission test runs wherever it can.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "probe"
+        path.write_bytes(b"")
+        path.chmod(0)
+        try:
+            path.read_bytes()
+        except PermissionError:
+            return True
+        finally:
+            path.chmod(0o600)
+    return False
+
+
+_MODE_000_LOCKS = _mode_000_locks_a_file()
+_NO_LOCK = "a mode-000 file can still be read here (root, or Windows)"
 
 
 class TmdbIdTest(unittest.TestCase):
@@ -227,6 +253,7 @@ class RefusalTest(_FolderCase):
         # The csv module's strict mode refuses an unclosed quote at the end.
         self.assertEqual(self.refusal(), "letterboxd-001.csv: not a CSV file (Error)")
 
+    @unittest.skipUnless(_MODE_000_LOCKS, _NO_LOCK)
     def test_an_unreadable_file(self) -> None:
         path = write_import(self.folder, "letterboxd-001.csv", [import_row("1", "A")])
         path.chmod(0)
@@ -234,6 +261,22 @@ class RefusalTest(_FolderCase):
         self.assertEqual(
             self.refusal(), "could not read letterboxd-001.csv: PermissionError"
         )
+
+    def test_a_read_refused_by_permission(self) -> None:
+        # The portable twin of the mode-000 test: the refusal is raised directly, so
+        # the read-error path is proven on a host where chmod cannot lock a file.
+        write_import(self.folder, "letterboxd-001.csv", [import_row("1", "A")])
+        real_open = Path.open
+
+        def refuse_imports(path: Path, *args: object, **kwargs: object) -> IO[str]:
+            if path.suffix == ".csv":
+                raise PermissionError(13, "Permission denied", str(path))
+            return real_open(path, *args, **kwargs)  # type: ignore[call-overload,no-any-return]
+
+        with mock.patch.object(Path, "open", refuse_imports):
+            self.assertEqual(
+                self.refusal(), "could not read letterboxd-001.csv: PermissionError"
+            )
 
 
 if __name__ == "__main__":

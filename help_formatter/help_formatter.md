@@ -36,7 +36,7 @@ therefore earns its keep only on those older interpreters, which is why
 stand-in that appends the note unconditionally, the way old argparse did) instead of against
 CPython's current output.
 
-**Corollary:** a compatibility shim for a *fixed* upstream bug cannot be behaviorally tested
+Corollary: a compatibility shim for a *fixed* upstream bug cannot be behaviorally tested
 on the fixed runtime. Its tests must target the shim's own contract, or they are vacuous at
 100% coverage.
 

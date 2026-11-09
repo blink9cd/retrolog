@@ -108,8 +108,8 @@ class TestBuildRequest(unittest.TestCase):
 
     def test_build_request_refuses_a_header_that_is_not_printable_ascii(self) -> None:
         # http.client encodes header values as latin-1 and raises UnicodeEncodeError
-        # for anything else, and that error's args and repr carry the WHOLE value,
-        # a bearer token included. So the refusal comes first, here, without it.
+        # for anything else, and that error's args and repr carry the WHOLE value
+        # (a bearer token included). So the refusal comes first, here, without it.
         for name, value in (
             ("Authorization", "Bearer t\u2019k"),
             ("X-Pr\u00f6be", "plain"),

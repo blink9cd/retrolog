@@ -9,12 +9,15 @@ from __future__ import annotations
 
 import contextlib
 import io
+import errno
 import json
+import os
 import sys
 import tempfile
 import unittest
 from collections.abc import Sequence
 from pathlib import Path
+from unittest import mock
 
 _TESTS = Path(__file__).resolve().parent
 _TOOL = _TESTS.parent
@@ -35,6 +38,52 @@ from probe_fixtures import (  # noqa: E402 - after the sys.path inserts above
 
 _EXIT_OK, _EXIT_FOUND, _EXIT_USAGE = 0, 1, 2
 _NOT_A_WORK_TREE, _A_WORK_TREE = 128, 0
+_DENIED = PermissionError(errno.EACCES, os.strerror(errno.EACCES))
+#: A name component past every common filesystem's 255-character limit.
+_OVERLONG = "x" * 300
+
+
+def _mode_500_locks_a_folder() -> bool:
+    """True when ``chmod(0o500)`` stops this process creating a file in a folder.
+
+    Root can write into a mode-500 folder, and on Windows ``chmod`` sets only the
+    read-only attribute, which never stops a folder taking a new file.
+    Probed rather than inferred from the platform, so the real-permission
+    tests run wherever they can.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        folder = Path(tmp) / "probe"
+        folder.mkdir()
+        folder.chmod(0o500)
+        try:
+            (folder / "file").write_bytes(b"")
+        except PermissionError:
+            return True
+        finally:
+            folder.chmod(0o700)
+    return False
+
+
+def _an_overlong_name_is_unexaminable() -> bool:
+    """True when ``lstat`` on an overlong name fails as other than a missing file.
+
+    POSIX refuses it as ENAMETOOLONG, a plain OSError; Windows maps its error for a
+    name too long (WinError 206) to FileNotFoundError, so there the product finds the
+    folder missing instead.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        try:
+            os.lstat(Path(tmp) / _OVERLONG / "report.md")
+        except FileNotFoundError:
+            return False
+        except OSError:
+            return True
+    return False
+
+
+_MODE_500_LOCKS = _mode_500_locks_a_folder()
+_NO_LOCK = "a mode-500 folder can still be written here (root, or Windows)"
+_OVERLONG_IS_UNEXAMINABLE = _an_overlong_name_is_unexaminable()
 
 
 class _CliCase(unittest.TestCase):
@@ -309,6 +358,7 @@ class OutGuardTest(_CliCase):
         self.assertIn("refused --out: its folder does not exist", err)
         self.assertEqual(head.calls, [])
 
+    @unittest.skipUnless(_MODE_500_LOCKS, _NO_LOCK)
     def test_a_report_that_cannot_be_written_is_2_naming_no_path(self) -> None:
         locked = self.base / "locked"
         locked.mkdir()
@@ -320,14 +370,50 @@ class OutGuardTest(_CliCase):
         self.assertIn("could not write --out: PermissionError", err)
         self.assertNotIn(str(self.base), err)
 
+    def test_a_report_write_refused_by_permission_is_2_naming_no_path(self) -> None:
+        # The portable twin of the mode-500 test: the refusal is raised directly, so
+        # the write-error path is proven on a host where chmod cannot lock a folder.
+        with mock.patch.object(retrolog_probe, "write_atomic", side_effect=_DENIED):
+            code, _, err = self.run_cli(FakeHead(PRESENT, PRESENT, PRESENT))
+        self.assertEqual(code, _EXIT_USAGE)
+        self.assertIn("could not write --out: PermissionError", err)
+        self.assertNotIn(str(self.base), err)
+        self.assertFalse(self.out.exists())
+
+    def test_an_overlong_out_is_2_naming_no_path(self) -> None:
+        # A name component past the filesystem's limit: stat itself fails. The reason
+        # is the host's (see _an_overlong_name_is_unexaminable); the refusal is not.
+        self.out = self.base / _OVERLONG / "report.md"
+        head = FakeHead()
+        code, _, err = self.run_cli(head)
+        self.assertEqual(code, _EXIT_USAGE)
+        if _OVERLONG_IS_UNEXAMINABLE:
+            self.assertIn("could not write --out: OSError", err)
+        else:
+            self.assertIn("refused --out: its folder does not exist", err)
+        self.assertNotIn("xxx", err)
+        self.assertEqual(head.calls, [])
+
     def test_an_out_that_cannot_be_examined_is_2_naming_no_path(self) -> None:
-        # A name component past the filesystem's limit: stat itself fails.
-        self.out = self.base / ("x" * 300) / "report.md"
-        code, _, err = self.run_cli(FakeHead())
+        # The portable form of the overlong name: lstat raising other than a missing
+        # file, which a Windows host never does for that name.
+        real_lstat = os.lstat
+        too_long = OSError(errno.ENAMETOOLONG, os.strerror(errno.ENAMETOOLONG))
+
+        def refuse_out(path: object, *args: object, **kwargs: object) -> object:
+            if path == self.out:
+                raise too_long
+            return real_lstat(path, *args, **kwargs)  # type: ignore[arg-type]
+
+        head = FakeHead()
+        with mock.patch.object(retrolog_probe.os, "lstat", refuse_out):
+            code, _, err = self.run_cli(head)
         self.assertEqual(code, _EXIT_USAGE)
         self.assertIn("could not write --out: OSError", err)
-        self.assertNotIn("xxx", err)
+        self.assertNotIn(str(self.base), err)
+        self.assertEqual(head.calls, [])
 
+    @unittest.skipUnless(_MODE_500_LOCKS, _NO_LOCK)
     def test_a_cache_that_cannot_be_written_is_2_before_any_request(self) -> None:
         folder = self.base / "cache-folder"
         folder.mkdir()
@@ -338,6 +424,17 @@ class OutGuardTest(_CliCase):
         code, _, err = self.run_cli(head, "--cache", cache)
         self.assertEqual(code, _EXIT_USAGE)
         self.assertIn("could not write --cache: PermissionError", err)
+        self.assertFalse(self.out.exists())
+        self.assertEqual(head.urls(), [])
+
+    def test_a_cache_save_refused_by_permission_is_2_before_any_request(self) -> None:
+        # The portable twin of the mode-500 cache test, as for the report above.
+        head = FakeHead(PRESENT, PRESENT)
+        with mock.patch.object(retrolog_probe, "save_cache", side_effect=_DENIED):
+            code, _, err = self.run_cli(head, "--cache", str(self.cache))
+        self.assertEqual(code, _EXIT_USAGE)
+        self.assertIn("could not write --cache: PermissionError", err)
+        self.assertNotIn(str(self.base), err)
         self.assertFalse(self.out.exists())
         self.assertEqual(head.urls(), [])
 

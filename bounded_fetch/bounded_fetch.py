@@ -8,7 +8,7 @@ header that would break the request's framing), and one bounded body read
 (`read_body`, capped in size and in time). `fetch_url` chains the three around an
 opener from `build_opener`, whose redirect handler follows only https and keeps the
 caller's headers in their origin; it is the ONE network seam, which every unit test
-leaves alone; the pieces either side of it are tested on their own. `head_url` is
+leaves alone: the pieces either side of it are tested on their own. `head_url` is
 the second seam: a HEAD through an opener from `build_no_follow_opener`, whose
 redirect handler follows nothing, with `answer_head` turning what comes back into a
 `HeadAnswer`.
@@ -31,7 +31,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import IO, NoReturn, Protocol
 
-#: Sized for a whole feed body (a real Goodreads read shelf measured ~187 KB at
+#: Sized for a whole feed body (a real RSS shelf measured ~187 KB at
 #: per_page=50). It bounds each blocking socket operation (the connect, and every
 #: read of the body) because that is the only place a bound can interrupt a call
 #: already in flight; the two constants below bound what a sequence of such calls may
@@ -137,8 +137,8 @@ def _is_printable_ascii(text: str) -> bool:
     That excludes CR, LF and NUL, which would end a header early and start another
     of the sender's choosing (a header injection) or truncate it in whatever reads it
     next; tab, DEL and the other controls; and every non-ASCII character, which
-    `http.client` would try to encode as latin-1, raising, for anything outside it,
-    a `UnicodeEncodeError` whose args and repr carry the whole value.
+    `http.client` would try to encode as latin-1 (raising, for anything outside it,
+    a `UnicodeEncodeError` whose args and repr carry the whole value).
     """
     return text.isascii() and text.isprintable()
 

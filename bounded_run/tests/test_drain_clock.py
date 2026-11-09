@@ -259,8 +259,8 @@ class SleepInclusiveClockTests(unittest.TestCase):
 class ClockDeadlineRegressionTests(unittest.TestCase):
     """A bound measured on a clock that jumps past it must kill the whole tree.
 
-    Without a clock run_bounded waits on time.monotonic(), which stops while a Mac sleeps:
-    measured, a two-hour bound never fired across a 15-hour lid-shut night. Compressed here:
+    Without a clock, run_bounded waits on time.monotonic(), which stops while a Mac sleeps: a
+    two-hour bound never fired across a 15-hour lid-shut night. Compressed here:
     the first reading sets a deadline an hour out, each later one leaves one real second until
     the fixture has recorded its grandchild, and the reading after that jumps past the deadline.
     """

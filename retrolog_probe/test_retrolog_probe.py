@@ -26,7 +26,7 @@ _SUITE_DIR = _HERE / "tests"
 # Restated, not derived (see module docstring).
 _MIN_TESTS_BY_FILE: dict[str, int] = {
     # The id rule (probe_ids) and reading export's import files (probe_input).
-    "test_probe_input.py": 19,
+    "test_probe_input.py": 20,
     # What one answer means (probe_verdict).
     "test_probe_verdict.py": 10,
     # What is sent, the pace, and the 429 back-off (probe_client).
@@ -38,7 +38,7 @@ _MIN_TESTS_BY_FILE: dict[str, int] = {
     # The report (probe_report).
     "test_probe_report.py": 3,
     # The command line end to end, and the committed sample.
-    "test_probe_cli.py": 30,
+    "test_probe_cli.py": 33,
     # Two real requests, skipped offline.
     "test_probe_live.py": 1,
 }

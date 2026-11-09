@@ -216,6 +216,7 @@ class AppendModeTest(CliCase):
         self.assertTrue(self.target.is_symlink())
         self.assertEqual(real_file.read_bytes(), _EXISTING)
 
+    @unittest.skipIf(os.name == "nt", "POSIX mode bits are not meaningful on NTFS")
     def test_the_replaced_file_is_readable_by_its_owner_only(self) -> None:
         self.target.chmod(0o644)
         self.assertEqual(self.append()[0], EXIT_OK)

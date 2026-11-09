@@ -1,6 +1,6 @@
 [project]
 name = "retrolog"
-version = "0.2.0"
+version = "0.2.1"
 description = "Turn a folder of old .txt, .doc and .docx media lists into files Letterboxd can import"
 readme = "README.md"
 license = "AGPL-3.0-or-later"

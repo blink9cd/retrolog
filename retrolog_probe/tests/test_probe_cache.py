@@ -20,6 +20,22 @@ sys.path.insert(0, str(_TOOL.parent / "retrolog_survey" / "src"))
 import probe_cache  # noqa: E402 - after the sys.path inserts above
 
 
+def _reading_a_directory_error() -> str:
+    """The error type this host raises reading a directory's bytes.
+
+    ``load_cache`` names the type it caught: IsADirectoryError on POSIX, and
+    PermissionError on Windows, which refuses to open a directory at all.
+    Asked of the host the same way, so the case pins the type the product
+    passes through without hardcoding one host's.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        try:
+            Path(tmp).read_bytes()
+        except OSError as error:
+            return type(error).__name__
+    raise AssertionError("this host read a directory's bytes")
+
+
 def _document(verdicts: object, schema: object = 1) -> bytes:
     return json.dumps({"schema": schema, "verdicts": verdicts}).encode("utf-8")
 
@@ -114,7 +130,8 @@ class FileTest(unittest.TestCase):
         with self.assertRaises(probe_cache.CacheError) as caught:
             probe_cache.load_cache(self.path)
         self.assertEqual(
-            str(caught.exception), "could not read --cache: IsADirectoryError"
+            str(caught.exception),
+            f"could not read --cache: {_reading_a_directory_error()}",
         )
 
 

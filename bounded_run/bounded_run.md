@@ -43,7 +43,7 @@ the folder the bootstrap names too, so keep the two libraries side by side.
 
 ## API
 
-### `run_bounded(argv, *, timeout, cwd=None, env=None, stdin_text=None, kill_tree_fn=kill_tree, clock=None, hide_window=False)`
+### `run_bounded(argv, *, timeout, cwd=None, env=None, stdin_text=None, kill_tree_fn=kill_tree, clock=None, hide_window=False, inherit_stderr=False)`
 
 Runs `argv` capturing text output; returns `subprocess.CompletedProcess[str]`. `argv` is a
 sequence of arguments: a `str` or `bytes` raises `TypeError` before anything is spawned, because
@@ -69,6 +69,19 @@ caller running under `pythonw.exe`, which has no console: Windows gives a consol
 of such a parent a new, visible console of its own. It is off by default, because a child of a
 console parent shares that console and should keep doing so. The flags are computed by
 `src/boundedrun_spawn_flags.py`.
+
+`inherit_stderr=True` gives the child this process's own stderr instead of a pipe, and the
+result's `stderr` is then `""`. It exists for a long child run for its stdout alone, such as a
+sweep whose report the caller parses: its progress lines reach the operator as they are written,
+instead of waiting in the pipe until it ends. Off by default, because most callers read the
+child's stderr, and a child's stray output on the caller's own stream is noise to the rest.
+The bytes sibling has no such option, because no caller needs one yet.
+
+Two consequences a caller owns. The child's stderr reaches the terminal raw, escape
+sequences included, with none of the sanitizing a caller applies to captured output, so
+pass it only for a child whose output you trust. And a parent with no stderr of its own,
+such as one run by `pythonw.exe`, has none to hand on, so the child's writes there go
+nowhere.
 
 ### `run_bounded_bytes(argv, *, timeout, cwd=None, env=None, stdin_bytes=None, kill_tree_fn=kill_tree, clock=None, hide_window=False)`
 
@@ -205,7 +218,7 @@ The properties callers depend on:
    concurrently share the registry safely: each update is a single set operation, and the kill
    walks a snapshot.
 
-   **The spawn-to-track window, and what remains of it:** `Popen` and the registration run in
+   The spawn-to-track window, and what remains of it: `Popen` and the registration run in
    one frame, on consecutive statements, so no frame hands the new object back to a caller first.
    A frame return is where a debugger's or a pure-Python coverage tracer's code runs, and with it
    any pending signal's handler. A handler that runs once `Popen` has handed the object back, at
@@ -233,7 +246,7 @@ The properties callers depend on:
    declined, because a child inherits a blocked signal mask and would be deaf to the very signals
    that stop it.
 
-   **What is still out of reach:** an interrupt delivered inside `Popen`'s own call, before that
+   What is still out of reach: an interrupt delivered inside `Popen`'s own call, before that
    call hands the object back: in `Popen`'s code after the child has started, at the
    pending-signal check CPython makes as the call instruction completes, or in a hook run on every
    instruction. No object reaches this module, so it has no child to name, and that child is left
@@ -250,7 +263,7 @@ The properties callers depend on:
 
 ## Implementation decisions that look wrong and are not
 
-**`start_new_session=True` is passed unconditionally.** The stdlib documents it as POSIX-only, but
+`start_new_session=True` is passed unconditionally. The stdlib documents it as POSIX-only, but
 it is *accepted* on `win32` (verified). On POSIX it makes the child a process-group leader whose
 group id is its own pid, which is what lets `killpg` reach that group with no lookup. Passing it
 unconditionally (like `creationflags`, whose value a pure helper derives from the platform) keeps
@@ -259,7 +272,7 @@ group: joining the parent's group instead was considered and declined, because t
 could then no longer signal its own child's group without signaling itself, and would need the
 walk anyway (property 6).
 
-**The POSIX walk reads `ps`, not `psutil`, `sysctl` or `/proc`.** `ps -A -o pid=,ppid=,pgid=,stat=`
+The POSIX walk reads `ps`, not `psutil`, `sysctl` or `/proc`. `ps -A -o pid=,ppid=,pgid=,stat=`
 is one command that BSD/macOS `ps` and procps both understand, and like `taskkill` it spawns
 nothing, so its own capturing read is safe. It reads through `Popen` and a bounded
 `communicate`, not `subprocess.run`, whose timeout path kills the child and then waits for it
@@ -269,41 +282,41 @@ standard library, and its recursive listing is the same parent-pid walk with no 
 would not close the race. `sysctl` through `ctypes` is a macOS-only structure layout, and `/proc`
 is Linux-only.
 
-**A SIGTERM cascade was declined.** Asking the tree to stop itself (each nesting level trapping
+A SIGTERM cascade was declined. Asking the tree to stop itself (each nesting level trapping
 `SIGTERM` and killing its own in-flight run) needs every level to opt in, and the chain runs
 through programs that never will, test suites and shell scripts among them; one silent level
 breaks it. It would also add a grace period to every expiry. The walk needs nothing from the
 processes it kills.
 
-**`Popen` is deliberately not used as a context manager.** `Popen.__exit__` calls an unbounded
+`Popen` is deliberately not used as a context manager. `Popen.__exit__` calls an unbounded
 `wait()`, which would reintroduce this module's own bug on the failed-kill path. `with
 subprocess.Popen(...)` reads like the more careful choice and is the less safe one here.
 
-**The Windows child is resumed through a thread snapshot.** Assigning a *running* child to a job
+The Windows child is resumed through a thread snapshot. Assigning a *running* child to a job
 races it: anything it starts before the assignment is born outside the job and survives the kill.
 `CREATE_SUSPENDED` closes that window, but `Popen` closes the thread handle `CreateProcess`
 returned, so the child is resumed by finding its one thread in a `CreateToolhelp32Snapshot` walk.
 `NtResumeProcess` would be shorter and is undocumented, so it was not used.
 
-**The job sets `JOB_OBJECT_LIMIT_BREAKAWAY_OK`, and not `KILL_ON_JOB_CLOSE`.** Without
+The job sets `JOB_OBJECT_LIMIT_BREAKAWAY_OK`, and not `KILL_ON_JOB_CLOSE`. Without
 breakaway-ok, a descendant that explicitly asks for `CREATE_BREAKAWAY_FROM_JOB` would have its
 `CreateProcess` *fail* inside the job, where it succeeded before containment existed; with it, that
 process leaves the job and escapes the kill, which is what it asked for. Kill-on-close stays off so
 that closing the job when a run ends leaves a process the run deliberately detached still running,
 just as the POSIX path never signals a finished run's group.
 
-**The job is found by pid, through a registry.** `kill_tree(pid)` keeps its signature, so
+The job is found by pid, through a registry. `kill_tree(pid)` keeps its signature, so
 `kill_tree_fn` stays `pid -> None` and no caller or fake changes. Each run registers its child's
 job at spawn and removes it when the run ends, however it ends; a pid cannot be reused meanwhile,
 because the child's `Popen` holds its process handle.
 
-**The kernel32 calls sit behind a seam that runs on every host.** `_KernelJobApi` takes the loaded
+The kernel32 calls sit behind a seam that runs on every host. `_KernelJobApi` takes the loaded
 library and the last-error reader as arguments, and its test fakes are C function pointers built
 from the same `_KERNEL32_SIGNATURES` table the Windows binding applies. The call order, the
 argument marshaling and the structure sizes are therefore checked on macOS and Linux too; only the
 binding itself is Windows-only.
 
-**The Windows half stays in `bounded_run.py`.** The drain's module in `src/` is a seam between
+The Windows half stays in `bounded_run.py`. The drain's module in `src/` is a seam between
 waiting and spawning, while the Windows half is part of the spawning. Only its transcription of
 the Win32 headers lives apart, in `src/boundedrun_kernel32.py`: the structure layouts and the
 kernel32 function table, which have no behavior of their own. `bounded_run` re-exports them.

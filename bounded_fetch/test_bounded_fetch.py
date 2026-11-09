@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
-"""Aggregator for bounded_fetch's grouped suites: bare-runnable, 100% branch.
+"""Aggregator for bounded_fetch's grouped suites, bare-runnable, 100% branch.
 
 This file holds no tests of its own beyond its guards. The real suites live in the sibling
 ``tests/`` directory, one per concern: the URL rule and the request built from it, the URL
 rule's property test, the redirect policy, the bounded body read, and the HEAD that
-follows no redirect. The layout pairs ``tests/``
-with this ``test_<folder>.py`` aggregator, whose ``load_tests`` pulls in every suite there.
+follows no redirect. This aggregator's ``load_tests`` pulls in every suite there.
 
 Entry point assumptions: run bare, or under a coverage runner started from this folder. Both
 put this directory on ``sys.path``; the insert below makes that explicit rather than
@@ -25,7 +24,7 @@ sys.path.insert(0, str(_HERE))
 # What each grouped file must yield, floored SEPARATELY rather than as one combined total.
 # The guard exists because an empty or half-failed discovery is otherwise a PASSING run:
 # "no tests ran" and "every test passed" are the same exit code, and nothing else in the
-# run distinguishes them. One combined floor decays by growth, though. Once the suite
+# test runner distinguishes them. One combined floor decays by growth, though: once the suite
 # exceeds it by more than the smallest file holds, that file can be lost whole while the
 # total still clears the floor, and the guard goes on passing while gating nothing. A
 # per-file floor closes that by construction, and the key-set comparison below means a file
@@ -93,13 +92,13 @@ class GroupedSuiteDiscoveryTest(unittest.TestCase):
         A guard calling ``_grouped_suite()`` directly shares its subject's failure mode:
         deleting or renaming ``load_tests`` stops every grouped suite running in the real
         invocation, while such a guard re-derives the same count fresh off disk and stays
-        green. ``loadTestsFromModule`` is what a bare run and a coverage run actually use,
+        green. ``loadTestsFromModule`` is what a bare run and a coverage runner actually use,
         and it honors the ``load_tests`` protocol, so this depends on that wiring.
 
         The two populations are counted APART, never summed: a single total carries the
         grouped suites' growth as slack, and a deleted guard here disappears into it.
         ``__name__`` is what separates them, and it holds under both invocations
-        (``__main__`` when run bare, the module name under another runner) because a class
+        (``__main__`` when run bare, the module name under a runner) because a class
         takes its ``__module__`` from the module that defines it.
         """
         loaded = _tests_by_module(

@@ -94,17 +94,17 @@ control or format character AND `urllib.parse.urlsplit` then gives it the scheme
 non-empty hostname and no userinfo. Everything else is `None`: `http:`, `file:`, `ftp:`,
 `data:`, `javascript:`, an `https:///x` with no host, a scheme-relative `//host/x`, an empty
 string, a `user:password@` prefix, and a string `urlsplit` itself refuses (an unclosed IPv6
-bracket); that last one answers `None` rather than letting a `ValueError` out of a parser.
+bracket). That last one answers `None` rather than letting a `ValueError` out of a parser.
 The uppercase `HTTPS://` is accepted as it is: urllib lowercases the scheme itself when it
 picks a handler.
 
-**The character scan runs on the raw string, before the parse, and that order is the
-point.** Parsing is not filtering: `urlsplit` silently strips tab, carriage return and line
+The character scan runs on the raw string, before the parse, and that order is the
+point. Parsing is not filtering: `urlsplit` silently strips tab, carriage return and line
 feed, so a URL smuggling a header break (or one with a tab spliced into the scheme) parses
 perfectly clean, and it never looks at a NUL, an escape or a zero-width mark at all.
 Scanning afterwards would therefore accept all of them. It scans the characters that are
 actually present, so a percent-ESCAPED space or control character is ordinary URL text and
-survives: refusing that would reject legitimate URLs.
+survives, because refusing that would reject legitimate URLs.
 
 A caller applies the rule wherever it decides a URL, so a rejected one becomes "no URL" in
 the caller's own terms (a record with no image, say). `build_request` applies it again at the
@@ -132,7 +132,7 @@ hop. Left alone, a server could redirect a fetch onto plain http, or hand a call
   which the stock handler never copies to a redirect.
 - `build_opener(headers)`, which `fetch_url` opens through, replaces the stock handler with
   one that refuses, with `ValueError`, any redirect whose target `https_url_or_none`
-  rejects (plain http and ftp included) or whose port cannot be read, closing the
+  rejects (plain http and ftp included), or whose port cannot be read, closing the
   redirect's own response first; and that re-attaches the caller's headers only when the
   target's scheme, host and port are the redirecting request's. A path moved on the same
   server (a trailing slash, a renamed feed) still gets the User-Agent it may require;
@@ -179,12 +179,12 @@ as long as the server cares to drip, and a body is read into memory whole with n
 at all.
 
 `read_body(response)` closes both gaps. It consumes the response in chunks with `read1`,
-never `read(n)`: `read(n)` blocks until `n` bytes have arrived or the body ends, so a
+never `read(n)`. `read(n)` blocks until `n` bytes have arrived or the body ends, so a
 byte-at-a-time server would hold it as long as it holds a bare `read()`, whereas `read1(n)`
 returns whatever one underlying read produced and so hands control back between chunks.
 Between chunks it applies the other two bounds:
 
-- `BODY_LIMIT_BYTES` (4 MiB): past this the read stops with `ValueError`. It is generous against
+- `BODY_LIMIT_BYTES` (4 MiB): past this the read stops with `ValueError`. This is generous against
   the largest real feed measured, more than twenty times over, so a body this size is not
   what was asked for.
 - `BODY_DEADLINE_SECONDS` (60): a body still arriving this long after the read began stops
@@ -204,9 +204,9 @@ response and `io.BytesIO` both provide.
 `opener.open` is the other, excluded the same way), and it is excluded from
 coverage (`# pragma: no cover`, with the reason beside it) rather than mocked: a mocked
 `opener.open` proves only that the mock was called correctly, never that a genuine HTTPS
-response comes back readable. The halves either side of it are unit-tested on their own
-(`build_request`, which builds what is sent, and `read_body`, which consumes what comes
-back), and a caller proves the whole chain with a live end-to-end test at its own boundary, where
+response comes back readable. The halves either side of it are unit-tested on their own:
+`build_request`, which builds what is sent, and `read_body`, which consumes what comes back.
+A caller proves the whole chain with a live end-to-end test at its own boundary, where
 the real server is. A caller's own unit tests inject a fake in place of `fetch_url`.
 
 ## Importing it
@@ -234,7 +234,7 @@ to a failed import fails the run instead of passing as "no tests ran".
 rejected shape and `build_request`'s headers and refusals, without a request being sent;
 `tests/test_bounded_fetch_url_properties.py` holds `https_url_or_none` (a `# fuzz-target`)
 to its whole contract over arbitrary and URL-shaped text with a Hypothesis property,
-`test_fuzz_https_url_or_none`, the property test the marker promises;
+`test_fuzz_https_url_or_none`;
 `tests/test_bounded_fetch_redirect.py` calls the redirect handler `build_opener` installs
 directly, for a hop to another host, another port, the same origin and plain http;
 `tests/test_bounded_fetch_body.py` exercises `read_body` against `io.BytesIO` bodies and a
