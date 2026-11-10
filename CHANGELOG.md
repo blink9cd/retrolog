@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.2 - 2026-11-10
+
+### Changed
+
+- The license is now two files. `LICENSE` holds the GNU AGPL v3 text exactly as the Free
+  Software Foundation publishes it, so GitHub and other tools recognize it. `NOTICE` holds
+  the copyright line and the "or any later version" grant. The terms are unchanged:
+  AGPL-3.0-or-later.
+
 ## 0.2.1 - 2026-11-09
 
 ### Added

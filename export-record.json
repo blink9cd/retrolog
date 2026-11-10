@@ -2,8 +2,9 @@
   "files": {
     ".gitattributes": "sha256:2098baf9d3f4e749d75a80d00659c2c84bebd99127a419b7d1f20474beca1594",
     ".gitignore": "sha256:843dc34cfbc2e9714a72c589dceeeda3779063e2ba054b9b577b3f84772cc547",
-    "CHANGELOG.md": "sha256:c0b3789b53b3b76987de8b871f84ae2ecb9289ceed55c66f08ac131bdb1b1691",
-    "LICENSE": "sha256:480bc086cc31abd0ec8598db97abf2a5490bf30613bc209342a4e2c71a0f8b87",
+    "CHANGELOG.md": "sha256:218cdce7698bc8ea1c273e2d9b5dffb68943ca81cad580cb53f3bb0db5c26b23",
+    "LICENSE": "sha256:57c8ff33c9c0cfc3ef00e650a1cc910d7ee479a8bc509f6c9209a7c2a11399d6",
+    "NOTICE": "sha256:327ceae4f0e5a0b8baa3c5cef657cc5bf1ed0d00964e056974dd774243224489",
     "README.md": "sha256:bea696fa867f8a99853db498d2d09c9fbd107229d715a84bc02f2e0cbc831d7e",
     "bounded_fetch/bounded_fetch.md": "sha256:6cc1a3581c6561970e971f9af761034cb4209c729925487147e29016b9f090a7",
     "bounded_fetch/bounded_fetch.py": "sha256:bfd09b17d4ae45b34283d35a31848db5fd40a59e7aefd9952f8895f6474747a9",
@@ -43,7 +44,7 @@
     "live_pid_guard/live_pid_guard.md": "sha256:845ad838c67db255fa8237e605965cbeba4824e0fad47129ce6a09f915404811",
     "live_pid_guard/live_pid_guard.py": "sha256:532edba29ec45bf2ad840eab4008c808bb8bca446ea83ddac70ea470f53c77a0",
     "live_pid_guard/test_live_pid_guard.py": "sha256:c7e145ec5185f2f9d7ddc871fb4b23d32d12119c8d49e3d76825994145f570d6",
-    "pyproject.toml": "sha256:06597b9d14b12e193c2665a75022f908fd786afffc7f27d37cdd20e0a608332c",
+    "pyproject.toml": "sha256:1412debfa9e0c974b6b2ebdfc378bebce1f8c5ff4243a86306490a69c7dc58df",
     "retrolog_bootstrap/retrolog_bootstrap.md": "sha256:fa868c52594866288c67c0a993e77a519ad4f1eda60f70f87e305f3d2c63c51a",
     "retrolog_bootstrap/retrolog_bootstrap.py": "sha256:94693d04dcadedd624d2cc30169882e0f7d34e1419ca484f9cbf37dc40b2ec2b",
     "retrolog_bootstrap/test_retrolog_bootstrap.py": "sha256:baba4607840948fac2db4f1cfca4bd5b1bdd3b463c87f597941c17e52b4d795b",
@@ -322,6 +323,6 @@
   },
   "name": "retrolog",
   "schema": 1,
-  "source_commit": "a34e3f49f660cbf6bfd6f0926cf2bfe06d9dbf06",
-  "version": "0.2.1"
+  "source_commit": "9afc032130366c58dfaa87269ce45983b633921e",
+  "version": "0.2.2"
 }
