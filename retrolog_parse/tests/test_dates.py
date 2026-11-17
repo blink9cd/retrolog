@@ -14,6 +14,8 @@ _TOOL = _TESTS.parent
 sys.path.insert(0, str(_TOOL / "src"))
 sys.path.insert(0, str(_TOOL.parent / "retrolog_survey" / "src"))
 sys.path.insert(0, str(_TESTS / "fixtures"))
+sys.path.insert(0, str(_TESTS))
+import _retrolog_parse_fuzz_profile  # noqa: E402, F401 - loads the deterministic profile before any @given
 import parse_dates  # noqa: E402
 import parse_fixtures  # noqa: E402
 import parse_rules  # noqa: E402

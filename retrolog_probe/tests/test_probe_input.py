@@ -25,6 +25,8 @@ sys.path.insert(0, str(_TOOL.parent / "retrolog_resolve" / "src"))
 # titles with parse's rule.
 sys.path.insert(0, str(_TOOL.parent / "retrolog_parse" / "src"))
 sys.path.insert(0, str(_TESTS / "fixtures"))
+sys.path.insert(0, str(_TESTS))
+import _retrolog_probe_fuzz_profile  # noqa: E402, F401 - loads the deterministic profile before any @given
 import probe_ids  # noqa: E402 - after the sys.path inserts above
 import probe_input  # noqa: E402 - after the sys.path inserts above
 import resolve_columns  # noqa: E402 - after the sys.path inserts above

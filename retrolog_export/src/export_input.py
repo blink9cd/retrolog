@@ -191,6 +191,7 @@ def _csv_files(resolved: Path, medium: str) -> list[_CsvFile]:
     return sorted(found, key=lambda each: year_order(each.year))
 
 
+# fuzz-target
 def read_resolved(resolved: Path, medium: Literal["film"]) -> tuple[ResolvedRow, ...]:
     """Every row of every ``medium`` CSV in ``resolved``, files in year order.
 

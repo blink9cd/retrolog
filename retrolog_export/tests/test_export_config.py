@@ -18,6 +18,8 @@ sys.path.insert(0, str(_TOOL.parent / "retrolog_resolve" / "src"))
 sys.path.insert(0, str(_TOOL.parent / "retrolog_parse" / "src"))
 sys.path.insert(0, str(_TOOL.parent / "retrolog_survey" / "src"))
 sys.path.insert(0, str(_TESTS / "fixtures"))
+sys.path.insert(0, str(_TESTS))
+import _retrolog_export_fuzz_profile  # noqa: E402, F401 - loads the deterministic profile before any @given
 import export_config  # noqa: E402 - after the sys.path inserts above
 import parse_checks  # noqa: E402 - after the sys.path inserts above
 import parse_rows  # noqa: E402 - after the sys.path inserts above
@@ -147,8 +149,9 @@ class StarsTest(unittest.TestCase):
             "letterboxd.ratings: must be a table",
         )
 
+    # fuzz-explore: load_config
     @given(star_values)
-    def test_fuzz_star_value(self, value: TomlValue) -> None:
+    def test_any_star_value_loads_doubled_or_is_refused(self, value: TomlValue) -> None:
         """A star value loads as its doubled grid step, or is refused by its key."""
         try:
             config = _letterboxd(config_toml(ratings={"k": value}))

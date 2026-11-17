@@ -20,6 +20,8 @@ sys.path.insert(0, str(_TOOL.parent / "retrolog_parse" / "src"))
 sys.path.insert(0, str(_TOOL.parent / "retrolog_resolve" / "src"))
 sys.path.insert(0, str(_TOOL / "src"))
 sys.path.insert(0, str(_TESTS / "fixtures"))
+sys.path.insert(0, str(_TESTS))
+import _retrolog_export_fuzz_profile  # noqa: E402, F401 - loads the deterministic profile before any @given
 import export_pack  # noqa: E402 - after the sys.path inserts above
 
 _HEADER = ("A", "B")

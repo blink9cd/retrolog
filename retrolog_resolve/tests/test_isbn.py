@@ -9,6 +9,8 @@ from hypothesis import strategies as st
 
 _TESTS = Path(__file__).resolve().parent
 sys.path.insert(0, str(_TESTS.parent / "src"))
+sys.path.insert(0, str(_TESTS))
+import _retrolog_resolve_fuzz_profile  # noqa: E402, F401 - loads the deterministic profile before any @given
 import resolve_isbn  # noqa: E402
 
 # The ISBN-10 check value written as "X".

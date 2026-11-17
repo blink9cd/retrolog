@@ -16,6 +16,8 @@ sys.path.insert(0, str(_TOOL / "src"))
 sys.path.insert(0, str(_TOOL.parent / "retrolog_export" / "src"))
 sys.path.insert(0, str(_TOOL.parent / "retrolog_resolve" / "src"))
 sys.path.insert(0, str(_TESTS / "fixtures"))
+sys.path.insert(0, str(_TESTS))
+import _retrolog_probe_fuzz_profile  # noqa: E402, F401 - loads the deterministic profile before any @given
 import probe_verdict  # noqa: E402 - after the sys.path inserts above
 from probe_fixtures import bounded_fetch  # noqa: E402 - after the sys.path inserts above
 
@@ -61,7 +63,7 @@ class FilmLocationTest(unittest.TestCase):
             "https://letterboxd.com/film/../tmdb/1/",
             "/film/x/\r\nSet-Cookie: a=b",
             "/film/x y/",
-            "/film/x​/",
+            "/film/x\u200b/",
             "https://[::1/film/x/",
             "javascript:alert(1)",
         ):
@@ -74,8 +76,9 @@ class FilmLocationTest(unittest.TestCase):
             resolved = urllib.parse.urljoin(_URL, location)
             self.assertTrue(resolved.lower().startswith(_FILM_PREFIX))
 
+    # fuzz-explore: is_film_location
     @given(st.from_regex(r"\A[a-z0-9-]{1,30}\Z"))
-    def test_fuzz_every_slug_is_a_film_page(self, slug: str) -> None:
+    def test_every_slug_is_a_film_page(self, slug: str) -> None:
         self.assertTrue(probe_verdict.is_film_location(f"/film/{slug}/", _URL))
 
 

@@ -17,6 +17,8 @@ sys.path.insert(0, str(_TOOL.parent / "retrolog_export" / "src"))
 sys.path.insert(0, str(_TOOL.parent / "retrolog_resolve" / "src"))
 sys.path.insert(0, str(_TOOL.parent / "retrolog_parse" / "src"))
 sys.path.insert(0, str(_TOOL.parent / "retrolog_survey" / "src"))
+sys.path.insert(0, str(_TESTS))
+import _retrolog_probe_fuzz_profile  # noqa: E402, F401 - loads the deterministic profile before any @given
 import probe_report  # noqa: E402 - after the sys.path inserts above
 from export_config import load_config  # noqa: E402 - after the sys.path inserts
 from parse_rows import title_key  # noqa: E402 - after the sys.path inserts above

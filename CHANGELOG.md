@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.2.3 - 2026-11-17
+
+### Fixed
+
+- The bundled `bounded_fetch` library's `https_url_or_none`, which decides every URL the
+  tools record or request, refuses a URL with a backslash anywhere in its host part.
+  Python's `urlsplit` reads `\` as an ordinary host character while a browser reads it as
+  `/`, so `https://evil.example\.wikipedia.org/x` had a host ending in `.wikipedia.org`
+  for the check and led a browser to `evil.example`. A backslash in the path is still
+  allowed.
+
+### Changed
+
+- `retrolog_review`'s pinned development dependency `eslint` moves to 10.15.0, which
+  clears a reported vulnerability in its `minimatch` dependency.
+- `bounded_run.md` records that the Windows job-object path, its three live tests
+  included, now passes on a Windows runner at 100% branch coverage, where it said before
+  that the path had not yet run on Windows.
+- Tests and comments only, with no behavior change: each tool's property tests load one
+  deterministic Hypothesis profile from a module of their own, so a suite run alone
+  behaves as it does in the full run; test files write the invisible characters they
+  check as escapes; unused `noqa` comments are removed; and comments and docstrings gain
+  serial commas.
+
 ## 0.2.2 - 2026-11-10
 
 ### Changed

@@ -20,6 +20,8 @@ sys.path.insert(0, str(_TOOLS / "retrolog_resolve" / "src"))
 sys.path.insert(0, str(_TOOLS / "retrolog_parse" / "src"))
 sys.path.insert(0, str(_TOOLS / "retrolog_survey" / "src"))
 sys.path.insert(0, str(_TESTS / "fixtures"))
+sys.path.insert(0, str(_TESTS))
+import _retrolog_review_fuzz_profile  # noqa: E402, F401 - loads the deterministic profile before any @given
 import resolve_isbn  # noqa: E402 - after the sys.path inserts above
 import resolve_rows  # noqa: E402 - after the sys.path inserts above
 import review_read  # noqa: E402 - after the sys.path inserts above

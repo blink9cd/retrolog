@@ -25,6 +25,8 @@ sys.path[:0] = [
     str(_TOOL.parent / "retrolog_survey" / "src"),
     str(_TESTS / "fixtures"),
 ]
+sys.path.insert(0, str(_TESTS))
+import _retrolog_restore_fuzz_profile  # noqa: E402, F401 - loads the deterministic profile before any @given
 import export_account  # noqa: E402 - after the sys.path inserts above
 import restore_read  # noqa: E402 - after the sys.path inserts above
 from restore_fixtures import (  # noqa: E402 - after the sys.path inserts above

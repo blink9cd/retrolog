@@ -30,6 +30,8 @@ sys.path.insert(0, str(_TOOL.parent / "retrolog_survey" / "src"))
 sys.path.insert(0, str(_TOOL.parent / "retrolog_parse" / "src"))
 sys.path.insert(0, str(_TESTS / "fixtures"))
 sys.path.insert(0, str(_TOOL))
+sys.path.insert(0, str(_TESTS))
+import _retrolog_resolve_fuzz_profile  # noqa: E402, F401 - loads the deterministic profile before any @given
 import resolve_films  # noqa: E402 - after the sys.path inserts above
 import resolve_match  # noqa: E402 - after the sys.path inserts above
 import resolve_rows  # noqa: E402 - after the sys.path inserts above

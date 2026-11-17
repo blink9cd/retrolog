@@ -11,19 +11,19 @@ Python derives a text stream's encoding from the locale whenever that stream is 
 terminal. On Windows that is the legacy ANSI code page (cp1252 on a Western install), which cannot
 encode most non-ASCII characters. Two consequences, in opposite directions, from the same cause.
 
-**Write side.** A tool that prints a path it discovered on disk works when run by hand in a UTF-8
+On the write side, a tool that prints a path it discovered on disk works when run by hand in a UTF-8
 terminal and raises `UnicodeEncodeError` the moment stdout is a pipe, which is every scheduled
 run, every CI run, and every run whose parent captures it. The bug class is invisible
 interactively and certain in automation.
 
-**Read side.** `subprocess.run(..., text=True)` with no explicit `encoding` decodes the child
+On the read side, `subprocess.run(..., text=True)` with no explicit `encoding` decodes the child
 using the same locale code page. A child emitting UTF-8 therefore decodes to mojibake. Worse, a
 byte undefined in cp1252 (`0x81`, `0x8D`, `0x8F`, `0x90`, `0x9D`, reachable from Cyrillic, Greek,
 and CJK names) raises `UnicodeDecodeError` on subprocess's reader thread, where it is swallowed:
 `run()` returns with `stdout=None` and the caller fails later with a confusing `TypeError` that
 names neither encoding nor the child.
 
-**Coupling.** The two halves must be fixed together. A cp1252 decode followed by a cp1252 encode
+The two halves must be fixed together. A cp1252 decode followed by a cp1252 encode
 restores the original bytes *by accident*, which is why a capture-and-reprint tool can look
 correct today. Forcing only the output stream to UTF-8 turns that working accident into
 double-encoded corruption:
@@ -126,7 +126,7 @@ A tool's data does not go through any of these: a path in a report that is not t
 is the silent corruption the strict stdout exists to refuse. Escaping once around a single call,
 or catching the `UnicodeEncodeError` there, fixes one route and leaves the next one open.
 
-**Testing:** use a strict stream, never `io.StringIO`. `StringIO` stores text without encoding
+Testing: use a strict stream, never `io.StringIO`. `StringIO` stores text without encoding
 it, so it accepts the surrogate a real stream refuses, and a test written over it passes with the
 defect present. Use `io.TextIOWrapper(io.BytesIO(), encoding="utf-8")`, as
 `tests/test_escaping.py` does, and pair it with a guard proving the raw write raises. To test

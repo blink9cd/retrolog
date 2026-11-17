@@ -23,6 +23,8 @@ sys.path.insert(0, str(_TOOL))
 # The shared libraries go on sys.path through the project's one bootstrap, in the
 # retrolog_bootstrap folder beside this tool's own (retrolog_bootstrap.md says why).
 sys.path.append(str(Path(__file__).resolve().parents[2] / "retrolog_bootstrap"))
+sys.path.insert(0, str(_TESTS))
+import _retrolog_export_fuzz_profile  # noqa: E402, F401 - loads the deterministic profile before any @given
 import retrolog_bootstrap  # noqa: E402 - after the sys.path append above
 
 retrolog_bootstrap.add_shared("bounded_run")

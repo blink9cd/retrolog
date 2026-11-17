@@ -17,6 +17,8 @@ _TOOL = _TESTS.parent
 sys.path.insert(0, str(_TOOL / "src"))
 sys.path.insert(0, str(_TOOL.parent / "retrolog_resolve" / "src"))
 sys.path.insert(0, str(_TOOL.parent / "retrolog_survey" / "src"))
+sys.path.insert(0, str(_TESTS))
+import _retrolog_probe_fuzz_profile  # noqa: E402, F401 - loads the deterministic profile before any @given
 import probe_cache  # noqa: E402 - after the sys.path inserts above
 
 
@@ -81,13 +83,14 @@ class ParseTest(unittest.TestCase):
             return
         self.assertTrue(set(verdicts.values()) <= {"present", "missing"})
 
+    # fuzz-explore: parse_cache
     @given(
         st.dictionaries(
             st.integers(1, 9_999_999_999).map(str),
             st.sampled_from(typing.get_args(probe_cache.Settled)),
         )
     )
-    def test_fuzz_cache_bytes_round_trips(
+    def test_cache_bytes_round_trips(
         self, verdicts: dict[str, probe_cache.Settled]
     ) -> None:
         self.assertEqual(

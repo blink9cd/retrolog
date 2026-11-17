@@ -17,6 +17,8 @@ _TESTS = Path(__file__).resolve().parent
 _TOOL = _TESTS.parent
 sys.path.insert(0, str(_TOOL / "src"))
 sys.path.insert(0, str(_TOOL.parent / "retrolog_survey" / "src"))
+sys.path.insert(0, str(_TESTS))
+import _retrolog_parse_fuzz_profile  # noqa: E402, F401 - loads the deterministic profile before any @given
 import parse_output  # noqa: E402
 import parse_rows  # noqa: E402
 from parse_rows import Row  # noqa: E402

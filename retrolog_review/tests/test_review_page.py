@@ -20,6 +20,8 @@ from hypothesis import strategies as st
 _TESTS = Path(__file__).resolve().parent
 sys.path.insert(0, str(_TESTS.parent / "src"))
 sys.path.insert(0, str(_TESTS / "fixtures"))
+sys.path.insert(0, str(_TESTS))
+import _retrolog_review_fuzz_profile  # noqa: E402, F401 - loads the deterministic profile before any @given
 import review_page  # noqa: E402 - after the sys.path inserts above
 from review_fixtures import SCRIPT, STYLE, TEMPLATE  # noqa: E402
 
