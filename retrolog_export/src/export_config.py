@@ -1,7 +1,7 @@
 """Load and check the operator's export config, and check it covers the rows' ratings.
 
-The file is ``schema = 1`` plus one table per service; the tool reads
-``[letterboxd]`` only. That table holds ``watched_date``, ``tags``,
+The file is ``schema = 1`` plus one table per service, ``[letterboxd]``,
+``[goodreads]``, or both. ``[letterboxd]`` holds ``watched_date``, ``tags``,
 ``review_note``, ``review_note_rows``, and a ``ratings`` table mapping each rating
 key to stars. It may also hold ``rating_tags``, ``rating_names``,
 ``review_note_rating``, ``cutoff`` (whose ``title`` is kept as parse's
@@ -9,12 +9,18 @@ key to stars. It may also hold ``rating_tags``, ``rating_names``,
 list of films never sent, each a ``title`` kept the same way and an optional
 ``year``. Every tag, in ``tags`` and ``rating_tags`` alike, must start with
 ``export_types.IMPORT_TAG_PREFIX``, and ``tags`` must hold at least one, so every
-row carries the tag a rerun finds an earlier import by.
+row carries the tag a rerun finds an earlier import by. ``[goodreads]`` holds
+``ratings`` and ``shelves``, and may hold ``undated_date_added``, the note keys
+``private_note``, ``private_note_rating``, ``rating_names``, and
+``private_note_earlier``, and ``cutoff`` and ``omit`` as above; its own checks are
+``export_goodreads_config``'s.
 
 The value checks are parse's ``parse_checks`` helpers where one fits, so a refusal
 reads the way a rules-file refusal does: it names the TOML key
 (``letterboxd.ratings.b/c``) and never quotes the value, which can be the operator's
-own list text.
+own list text. Every helper takes the key it checks as ``where``, and each check of
+the rows takes its service's table name, so no message names a table of its own
+accord and a second service's table reads the same way.
 """
 
 from __future__ import annotations
@@ -24,8 +30,10 @@ import unicodedata
 from collections.abc import Mapping, Sequence
 from types import MappingProxyType
 
+import export_goodreads_config as goodreads_checks
 import parse_checks as checks
 from export_types import (
+    EARLIER_FIELDS,
     IMPORT_TAG_PREFIX,
     MAX_HALF_STARS,
     MIN_HALF_STARS,
@@ -33,16 +41,18 @@ from export_types import (
     SENTENCE_FIELDS,
     Cutoff,
     ExportConfig,
+    GoodreadsConfig,
     LetterboxdConfig,
     OmitEntry,
     ResolvedRow,
+    ServiceTable,
     template_names_any,
 )
 from parse_checks import RulesError
 from parse_rows import title_key
 
 _SCHEMA = 1
-_TOP_KEYS = frozenset({"schema", "letterboxd"})
+_TOP_KEYS = frozenset({"schema", "letterboxd", "goodreads"})
 _LETTERBOXD_REQUIRED = frozenset(
     {"watched_date", "tags", "review_note", "review_note_rows", "ratings"}
 )
@@ -79,6 +89,11 @@ _NOTE_MESSAGE = (
 # The rating sentence: only the rating key's word (SENTENCE_FIELDS) may be filled in.
 _SENTENCE_MESSAGE = (
     f"may hold only the placeholder {{rating}}, and at most {_MAX_NOTE_LENGTH} "
+    "characters"
+)
+# The earlier-reads sentence: only the earlier years (EARLIER_FIELDS).
+_EARLIER_MESSAGE = (
+    f"may hold only the placeholder {{years}}, and at most {_MAX_NOTE_LENGTH} "
     "characters"
 )
 # A rating key's word: plain text the note prints, so no control character.
@@ -155,13 +170,16 @@ def _tags(where: str, value: object) -> tuple[str, ...]:
 
 
 def _rating_tags(
-    where: str, value: object, ratings: Mapping[str, int]
+    where: str, value: object, ratings: Mapping[str, int], ratings_where: str
 ) -> Mapping[str, str]:
-    """The optional ``rating_tags`` table, each key one ``ratings`` already maps."""
+    """The optional ``rating_tags`` table, each key one ``ratings`` already maps.
+
+    ``ratings_where`` is the key ``ratings`` was read from, which a refusal names.
+    """
     table = checks.table(where, value)
     for key in table:
         if key not in ratings:
-            raise ConfigError(f"{where}.{key}: not a key of letterboxd.ratings")
+            raise ConfigError(f"{where}.{key}: not a key of {ratings_where}")
     return MappingProxyType(
         {key: _tag(f"{where}.{key}", tag) for key, tag in table.items()}
     )
@@ -189,14 +207,17 @@ def _template(where: str, value: object, allowed: frozenset[str], message: str) 
 
 
 def _rating_names(
-    where: str, value: object, ratings: Mapping[str, int]
+    where: str, value: object, ratings: Mapping[str, int], ratings_where: str
 ) -> Mapping[str, str]:
-    """The optional ``rating_names`` table, each key one ``ratings`` already maps."""
+    """The optional ``rating_names`` table, each key one ``ratings`` already maps.
+
+    ``ratings_where`` is the key ``ratings`` was read from, which a refusal names.
+    """
     table = checks.table(where, value)
     names: dict[str, str] = {}
     for key, name in table.items():
         if key not in ratings:
-            raise ConfigError(f"{where}.{key}: not a key of letterboxd.ratings")
+            raise ConfigError(f"{where}.{key}: not a key of {ratings_where}")
         if (
             not isinstance(name, str)
             or not 1 <= len(name) <= _MAX_NAME_LENGTH
@@ -208,16 +229,23 @@ def _rating_names(
 
 
 def _names_every_key(
-    where: str, sentence: str, names: Mapping[str, str], ratings: Mapping[str, int]
+    where: str,
+    sentence: tuple[str, str],
+    names: Mapping[str, str],
+    ratings: Mapping[str, int],
 ) -> None:
-    """Refuse a ``{rating}`` sentence while a rating key has no word to print."""
-    if not template_names_any(sentence, SENTENCE_FIELDS):
+    """Refuse a ``{rating}`` sentence while a rating key has no word to print.
+
+    ``sentence`` is the sentence's key in the table and its template, so the refusal
+    names the key that asked for the words.
+    """
+    key_name, template = sentence
+    if not template_names_any(template, SENTENCE_FIELDS):
         return
     for key in ratings:
         if key not in names:
             raise ConfigError(
-                f"{where}.rating_names.{key}: missing, and review_note_rating names "
-                "{rating}"
+                f"{where}.rating_names.{key}: missing, and {key_name} names {{rating}}"
             )
 
 
@@ -278,9 +306,10 @@ def _letterboxd(value: object) -> LetterboxdConfig:
     rows = table["review_note_rows"]
     if rows not in ("commented", "all"):
         raise ConfigError(f"{where}.review_note_rows: must be commented or all")
-    ratings = _ratings(f"{where}.ratings", table["ratings"])
+    ratings_where = f"{where}.ratings"
+    ratings = _ratings(ratings_where, table["ratings"])
     names = _rating_names(
-        f"{where}.rating_names", table.get("rating_names", {}), ratings
+        f"{where}.rating_names", table.get("rating_names", {}), ratings, ratings_where
     )
     sentence = _template(
         f"{where}.review_note_rating",
@@ -288,11 +317,11 @@ def _letterboxd(value: object) -> LetterboxdConfig:
         SENTENCE_FIELDS,
         _SENTENCE_MESSAGE,
     )
-    _names_every_key(where, sentence, names, ratings)
+    _names_every_key(where, ("review_note_rating", sentence), names, ratings)
     return LetterboxdConfig(
         half_stars=ratings,
         rating_tags=_rating_tags(
-            f"{where}.rating_tags", table.get("rating_tags", {}), ratings
+            f"{where}.rating_tags", table.get("rating_tags", {}), ratings, ratings_where
         ),
         tags=_tags(f"{where}.tags", table["tags"]),
         watched_date=table["watched_date"],
@@ -306,6 +335,57 @@ def _letterboxd(value: object) -> LetterboxdConfig:
         rating_names=names,
         review_note_rating=sentence,
         omit=_omit(f"{where}.omit", table.get("omit", [])),
+    )
+
+
+def _goodreads(value: object) -> GoodreadsConfig:
+    """The ``[goodreads]`` table as a ``GoodreadsConfig``."""
+    where = "goodreads"
+    table = _keyed(
+        where,
+        value,
+        goodreads_checks.GOODREADS_KEYS,
+        goodreads_checks.GOODREADS_REQUIRED,
+    )
+    ratings_where = f"{where}.ratings"
+    ratings = _ratings(ratings_where, table["ratings"])
+    names = _rating_names(
+        f"{where}.rating_names", table.get("rating_names", {}), ratings, ratings_where
+    )
+    sentence = _template(
+        f"{where}.private_note_rating",
+        table.get("private_note_rating", ""),
+        SENTENCE_FIELDS,
+        _SENTENCE_MESSAGE,
+    )
+    _names_every_key(where, ("private_note_rating", sentence), names, ratings)
+    return GoodreadsConfig(
+        half_stars=ratings,
+        shelves=goodreads_checks.shelves(f"{where}.shelves", table["shelves"]),
+        undated_date_added=goodreads_checks.undated_date_added(
+            f"{where}.undated_date_added", table.get("undated_date_added")
+        ),
+        private_note=_template(
+            f"{where}.private_note",
+            table.get("private_note", ""),
+            NOTE_FIELDS,
+            _NOTE_MESSAGE,
+        ),
+        private_note_rating=sentence,
+        rating_names=names,
+        private_note_earlier=_template(
+            f"{where}.private_note_earlier",
+            table.get("private_note_earlier", ""),
+            EARLIER_FIELDS,
+            _EARLIER_MESSAGE,
+        ),
+        cutoff=_cutoff(f"{where}.cutoff", table["cutoff"])
+        if "cutoff" in table
+        else None,
+        omit=_omit(f"{where}.omit", table.get("omit", [])),
+        shelf_tags=goodreads_checks.shelf_tags(
+            f"{where}.shelf_tags", table.get("shelf_tags", {})
+        ),
     )
 
 
@@ -333,33 +413,61 @@ def load_config(data: bytes) -> ExportConfig:
         letterboxd = (
             _letterboxd(document["letterboxd"]) if "letterboxd" in document else None
         )
+        goodreads = (
+            _goodreads(document["goodreads"]) if "goodreads" in document else None
+        )
     except RulesError as error:
-        # parse_checks' helpers name the key the same way; only the class differs.
+        # parse_checks' helpers, and export_goodreads_config's, name the key the same
+        # way; only the class differs.
         raise ConfigError(str(error)) from None
-    return ExportConfig(letterboxd=letterboxd)
+    return ExportConfig(letterboxd=letterboxd, goodreads=goodreads)
 
 
-def check_keys(config: LetterboxdConfig, rows: Sequence[ResolvedRow]) -> None:
+def check_keys(
+    config: ServiceTable,
+    rows: Sequence[ResolvedRow],
+    *,
+    where: str,
+) -> None:
     """Refuse, naming it, the first rating key a row carries that ``ratings`` lacks.
 
-    An unrated row (``rating_raw`` empty) needs no key. Checked before anything is
-    written, so a code the config forgot stops the run rather than dropping a rating.
+    ``where`` is the config's table, ``letterboxd`` or ``goodreads``. An unrated row
+    (``rating_raw`` empty) needs no key. Checked before anything is written, so a code
+    the config forgot stops the run rather than dropping a rating.
     """
     for row in rows:
         if row.rating_raw and row.rating_raw not in config.half_stars:
             raise ConfigError(
-                f"letterboxd.ratings.{row.rating_raw}: missing, and a row is rated "
-                "with it"
+                f"{where}.ratings.{row.rating_raw}: missing, and a row is rated with it"
             )
 
 
-def check_omit(config: LetterboxdConfig, rows: Sequence[ResolvedRow]) -> None:
+def check_undated(
+    config: GoodreadsConfig, rows: Sequence[ResolvedRow], *, where: str
+) -> None:
+    """Refuse an undated row while ``undated_date_added`` names no date.
+
+    ``where`` is the config's table, as ``check_keys`` takes it. Checked before
+    anything is written: an undated book's Date Added is that date, and without one
+    the import would date it today and sort it above current reading.
+    """
+    if config.undated_date_added is None and any(row.date is None for row in rows):
+        raise ConfigError(f"{where}.undated_date_added: missing, and a row is undated")
+
+
+def check_omit(
+    config: ServiceTable,
+    rows: Sequence[ResolvedRow],
+    *,
+    where: str,
+) -> None:
     """Refuse, by its number, the first ``omit`` entry that names none of ``rows``.
 
-    ``rows`` is every row read, the cutoff's included, so a moved cutoff never makes
-    an entry stale; an entry naming nothing is a typo or a film gone from the lists,
-    and would otherwise leave out nothing while the operator thinks it does.
+    ``where`` is the config's table, as ``check_keys`` takes it. ``rows`` is every
+    row read, the cutoff's included, so a moved cutoff never makes an entry stale; an
+    entry naming nothing is a typo or a film gone from the lists, and would otherwise
+    leave out nothing while the operator thinks it does.
     """
     for number, entry in enumerate(config.omit, start=1):
         if not any(entry.names(row) for row in rows):
-            raise ConfigError(f"letterboxd.omit[{number}]: matches no row")
+            raise ConfigError(f"{where}.omit[{number}]: matches no row")

@@ -27,7 +27,7 @@ sys.path.insert(0, str(_TESTS / "fixtures"))
 sys.path.insert(0, str(_TOOL / "samples"))
 sys.path.insert(0, str(_TOOL))
 import build_export_inputs  # noqa: E402 - after the sys.path inserts above
-import retrolog_export  # noqa: E402 - after the sys.path inserts above
+import export_write  # noqa: E402 - after the sys.path inserts above
 from export_cli_case import (  # noqa: E402 - after the sys.path inserts above
     EXIT_ERRORS,
     EXIT_OK,
@@ -242,7 +242,7 @@ class TestFilmTest(CliCase):
 
     def test_a_failed_test_file_write_exits_2_naming_no_path(self) -> None:
         denied = PermissionError(13, "denied", str(self.out / _TEST_FILE))
-        with mock.patch.object(retrolog_export, "write_atomic", side_effect=denied):
+        with mock.patch.object(export_write, "write_atomic", side_effect=denied):
             self.assertEqual(self.main("--test-film"), EXIT_USAGE)
         self.assertIn("could not write the output", self.stderr)
         self.assert_no_absolute_path()

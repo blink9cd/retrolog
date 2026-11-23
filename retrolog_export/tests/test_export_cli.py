@@ -28,6 +28,8 @@ sys.path.insert(0, str(_TESTS / "fixtures"))
 sys.path.insert(0, str(_TOOL / "samples"))
 sys.path.insert(0, str(_TOOL))
 import build_export_inputs  # noqa: E402 - after the sys.path inserts above
+import export_select  # noqa: E402 - after the sys.path inserts above
+import export_write  # noqa: E402 - after the sys.path inserts above
 import retrolog_export  # noqa: E402 - after the sys.path inserts above
 import survey_guard  # noqa: E402 - retrolog_export puts its folder on sys.path
 from export_fixtures import (  # noqa: E402 - after the sys.path inserts above
@@ -270,24 +272,37 @@ class UsageExitTest(_CliCase):
 
     def test_a_write_failure(self) -> None:
         with mock.patch.object(
-            retrolog_export, "write_atomic", side_effect=PermissionError(13, "denied")
+            export_write, "write_atomic", side_effect=PermissionError(13, "denied")
         ):
             self.assert_refused(self.main(), "could not write the output")
+
+    def test_caps_above_letterboxds_own_are_refused(self) -> None:
+        # Goodreads takes more, so argparse accepts these; the run refuses them for
+        # Letterboxd, whose importer caps a file at 1,900 titles and 1 MB.
+        for extra, needle in (
+            (
+                ["--rows-per-file", "1901"],
+                "--rows-per-file: letterboxd takes 1 to 1900",
+            ),
+            (["--max-bytes", "1000001"], "--max-bytes: letterboxd takes 1024 to"),
+        ):
+            with self.subTest(extra=extra):
+                self.assert_refused(self.main(*extra), needle)
 
     def test_bad_option_values_are_usage_errors(self) -> None:
         for extra in (
             ["--rows-per-file", "0"],
-            ["--rows-per-file", "1901"],
+            ["--rows-per-file", "10001"],
             ["--rows-per-file", "x"],
             ["--max-bytes", "1023"],
-            ["--max-bytes", "1000001"],
+            ["--max-bytes", "10000001"],
             ["--timeout", "0"],
             # Regression: socket and subprocess timeouts reject an infinite, a NaN,
             # or a huge value with a traceback, so resolve's bound holds here too.
             ["--timeout", "inf"],
             ["--timeout", "nan"],
             ["--timeout", "3601"],
-            ["--service", "goodreads"],
+            ["--service", "other"],
         ):
             with self.subTest(extra=extra):
                 with contextlib.redirect_stderr(io.StringIO()):
@@ -345,7 +360,8 @@ class SampleTest(unittest.TestCase):
         expected = _TOOL / "samples" / "expected"
         self.assertGreaterEqual(len(list(expected.glob("letterboxd-*.csv"))), 2)
         review = (expected / "review.md").read_text("utf-8")
-        for kind in retrolog_export.REVIEW_KINDS:
+        # The book-only kinds are the Goodreads sample's to show, not this film one's.
+        for kind in export_select.review_kinds("film"):
             self.assertIn(f"## {kind} (", review)
 
     def test_sample_builder_refuses_a_non_empty_out(self) -> None:

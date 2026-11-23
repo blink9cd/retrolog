@@ -30,6 +30,10 @@ _JSON_KEYS = (
     "editions",
     "isbn",
     "language",
+    "authors",
+    "author",
+    "first_publish_date",
+    "personal_name",
 )
 _JSON_LEAVES = st.one_of(
     st.none(),

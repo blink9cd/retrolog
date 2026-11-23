@@ -78,3 +78,20 @@ python -c "import subprocess; print(subprocess.run(['tasklist','/FI','IMAGENAME 
 
 The fixed path needs no cleanup: its tree kill takes the grandchild with it, which the live test
 asserts.
+
+## A memory bound: the tree is killed past its limit
+
+`alloc_child.py` allocates and writes memory in chunks (`--chunk-mib`, up to `--total-mib`),
+printing a line per chunk, and can hold it (`--hold-seconds`) and record its pid
+(`--pid-file`). `tests/test_memory_limit.py` drives it. On macOS or Linux, cap it far below
+what it asks for:
+
+```bash
+python -c "import sys; sys.path.insert(0, 'bounded_run'); import bounded_run
+try: bounded_run.run_bounded([sys.executable, 'bounded_run/samples/alloc_child.py', '--total-mib', '2048'], timeout=120, memory_limit=256 * 2**20)
+except bounded_run.MemoryLimitExceeded as e: print('killed at %d MiB' % (e.peak // 2**20))"
+```
+
+Expected: `killed at 267 MiB` or thereabouts, well under a second in: past the 256 MiB limit by
+what the child allocated between two polls. Raise `memory_limit` above 2048 MiB and the same
+run returns a `CompletedProcess` whose stdout ends in `done`.

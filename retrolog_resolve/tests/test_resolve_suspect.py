@@ -57,6 +57,7 @@ from resolve_rows_case import (  # noqa: E402 - after the sys.path inserts above
     ISBN,
     STEP1,
     RowsCase,
+    no_editions,
     ol_url,
     overrides_of,
 )
@@ -336,7 +337,7 @@ class HeldRowsTest(RowsCase):
         work = ol_work(
             key="/works/OL1W", title=_TITLE, year=None, editions=(ol_edition(ISBN),)
         )
-        pages = {ol_url(_TITLE, STEP1): ol_payload(work)}
+        pages = {ol_url(_TITLE, STEP1): ol_payload(work), **no_editions("/works/OL1W")}
         out, review = self.run_all([input_row(_TITLE)], pages=pages)
         self.assertEqual(self.status(out[0]), ("resolved", ISBN, "/works/OL1W", ""))
         self.assertEqual(review, ())

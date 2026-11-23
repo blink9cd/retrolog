@@ -1,5 +1,42 @@
 # Changelog
 
+## 0.3.0 - 2026-11-23
+
+### Added
+
+- `retrolog_export --service goodreads` writes a Goodreads import file for your books.
+  It reads a Goodreads library export, so a book already on the account is not sent
+  again, and its `review.md` lists the books to remove from their shelves before the
+  import. The config's `[goodreads]` table sets the shelves, the star ratings (half
+  stars included), the Private Notes sentences, the date an undated book is added, a
+  cutoff, an omit list, and a tag for each custom shelf. A book read more than once
+  goes out as one row; one whose reads carry different keys is held as `held-split`
+  for review, since Goodreads keeps one record per book.
+- The README walks through a Goodreads run, and `retrolog_export.md` documents the
+  service, its columns, and its review kinds.
+- `retrolog_resolve --medium book` fills an override book's author, and an empty
+  year, from its Open Library work, and picks one ISBN-13 per work from that work's
+  edition list. Both are new requests to Open Library, cached like the search. A rerun
+  can change the ISBN-13 an earlier release gave a book: every book resolved to a work
+  now takes one ISBN-13 for that work, an override's own, else one picked from the
+  work's edition list passing over known print-on-demand imprints, else the search's.
+- `bounded_run` takes `memory_limit=`, which bounds the whole process tree's memory
+  and kills the tree on a breach, and `stream_bounded`, a streaming entry point under
+  the same timeout and tree kill. `memory_limit=` is refused on Windows.
+
+### Changed
+
+- `retrolog_export`'s selection and review are shared by both services, and the
+  Letterboxd output is unchanged.
+- `retrolog_export --out`'s help names the folders it refuses.
+- The sample commands run in Python's isolated mode, `python3 -I`, as the README's do.
+
+### Fixed
+
+- `retrolog_resolve` skips an Open Library search result whose key is not a work. Such
+  a result could resolve a book to an id the overrides file then refused, and the review
+  page refused the whole review list.
+
 ## 0.2.3 - 2026-11-17
 
 ### Fixed

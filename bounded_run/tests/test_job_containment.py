@@ -204,6 +204,41 @@ class ContainmentWiringTests(unittest.TestCase):
         )
         self.assertEqual(bounded_run._JOBS, {})
 
+    def test_a_stream_contains_its_child_and_releases_the_job(self) -> None:
+        api = _FakeJobApi()
+        with (
+            _faked_containment(api),
+            bounded_run.stream_bounded(
+                [sys.executable, "-c", "pass"], timeout=_QUICK_BOUND
+            ) as stream,
+        ):
+            self.assertEqual(stream.read(1), b"")
+            self.assertIn(stream.pid, bounded_run._JOBS)
+        self.assertEqual(api.verbs(), ["create_job", "assign", "resume", "close"])
+        self.assertEqual(bounded_run._JOBS, {})
+
+    def test_a_timed_out_stream_is_killed_through_its_job(self) -> None:
+        api = _FakeJobApi()
+        argv = [sys.executable, "-c", f"import time; time.sleep({_SLEEPER_SECONDS})"]
+        with _faked_containment(api), self.assertRaises(subprocess.TimeoutExpired):
+            with bounded_run.stream_bounded(argv, timeout=_SHORT_BOUND) as stream:
+                stream.read(1)
+        self.assertEqual(
+            api.verbs(), ["create_job", "assign", "resume", "terminate", "close"]
+        )
+        self.assertEqual(bounded_run._JOBS, {})
+
+    def test_a_stream_whose_containment_fails_starts_nothing_else(self) -> None:
+        api = _FakeJobApi(fail="assign")
+        with _faked_containment(api), self.assertRaises(OSError):
+            with bounded_run.stream_bounded(
+                [sys.executable, "-c", "import time; time.sleep(30)"],
+                timeout=_QUICK_BOUND,
+            ):
+                self.fail("the body ran in an uncontained child")
+        self.assertEqual(bounded_run.live_pids(), ())
+        self.assertEqual(bounded_run._JOBS, {})
+
 
 if __name__ == "__main__":
     unittest.main()

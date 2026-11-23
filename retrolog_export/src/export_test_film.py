@@ -9,7 +9,7 @@ the next run as only logged, and is sent again without stars, while any one tagg
 row has the next run skip the film whole. With no such film, it is the table's
 first film.
 So the operator finds it there at once, and the same inputs always choose the same
-film.
+film. ``any_tagged`` answers, from a film's import rows, whether the import tags it.
 """
 
 from __future__ import annotations
@@ -18,9 +18,19 @@ from collections.abc import Sequence
 
 from export_output import entry_order
 from export_select import Film, review_entry
+from export_services import ServiceSpec
 
 # The review kind of a film the account already logged, sent without stars.
 _LOGGED = "logged-no-stars"
+
+
+def any_tagged[C, A](spec: ServiceSpec[C, A], rows: Sequence[Sequence[str]]) -> bool:
+    """Whether the import tags at least one of a film's ``rows``: see ``tag_columns``.
+
+    One is enough: the next run skips every row of a film any tagged row names.
+    """
+    at = [spec.columns.index(column) for column in spec.tag_columns]
+    return any(any(cells[i] for i in at) for cells in rows)
 
 
 def pick_test_film(films: Sequence[Film], tagged: Sequence[bool]) -> int | None:

@@ -12,7 +12,7 @@ id and ISBN is made up.
 From the tool's folder (the one holding `retrolog_resolve.py`):
 
 ```bash
-work="$(mktemp -d)"
+work="$(mktemp -d "${TMPDIR:-/tmp}/retrolog_resolve.XXXXXX")"
 python3 samples/build_resolve_inputs.py --out "$work"
 python3 retrolog_resolve.py --parsed "$work/parsed" --out "$work/out" --overrides "$work/overrides.toml" --cache-only
 diff -r -x .retrolog_resolve -x cache "$work/out" samples/expected
@@ -57,7 +57,7 @@ The same inputs, resolved with `--medium film`, from a second fresh folder so it
 holds only the builder's marker and cache:
 
 ```bash
-film="$(mktemp -d)"
+film="$(mktemp -d "${TMPDIR:-/tmp}/retrolog_resolve.XXXXXX")"
 python3 samples/build_resolve_inputs.py --out "$film"
 python3 retrolog_resolve.py --parsed "$film/parsed" --out "$film/out" --overrides "$film/overrides.toml" --cache-only --medium film
 diff -r -x .retrolog_resolve -x cache "$film/out" samples/expected-film
@@ -93,12 +93,12 @@ sample's own.
 
 | Row | Shows |
 | --- | --- |
-| `Moby Dick`, `Metropolis` | `override`: the example file's title-only entries settle them, unsearched. `Metropolis` takes its TMDb titles and its empty year from the details of its override's id. |
+| `Moby Dick`, `Metropolis` | `override`: the example file's title-only entries settle them, unsearched. `Moby Dick` takes its creator and its empty year from its override's work and that work's author, keeping the override's ISBN-13; `Metropolis` takes its TMDb titles and its empty year from the details of its override's id. |
 | `Placeholder Book One` | `override` with no id: the example's `unresolvable` entry. |
 | `Placeholder Film One`, line 7 | `override`: the example's entry for that line only. Its id's details give it a TMDb original title, `Film Un Factice`, and its empty year. |
 | `Placeholder Film One`, line 9 | The same title on another line is still searched, and `resolved`. |
-| `Placeholder Book Two` | `resolved` at the first search step, with an ISBN-13. |
-| `Placeholder Book Three` | `resolved` only by the last step, with no ISBN: a `no-isbn` entry. |
+| `Placeholder Book Two` | `resolved` at the first search step. The search's first edition is a print-on-demand one, so its work's edition list gives the ISBN-13 instead: the other English edition's, `9780000000026`. |
+| `Placeholder Book Three` | `resolved` only by the last step, with no ISBN, and its work's edition list holds none either: a `no-isbn` entry. |
 | `Placeholder Book Four`, `Placeholder Film Two` | `ambiguous`: two exact titles each, listed; the films with their directors, the default `--directors ambiguous`. A third film released after the row's year is dropped. |
 | `Placeholder Film Six` | `resolved` by most votes: two exact titles, the first with thirty times the second's votes, so a `most-voted` entry lists both, with their votes and directors. |
 | `Placeholder Story II` | `resolved` by a variant: no candidate's title is exact, but under the sequel-numeral variant the row's `II` meets `Placeholder Story 2`'s `2`, so a `variant` entry names it. The other candidate, `Placeholder Story`, matches under no variant. |

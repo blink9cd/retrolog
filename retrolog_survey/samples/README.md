@@ -10,7 +10,7 @@ with the same builders the tests use, and every title is a placeholder such as
 From the tool's folder (the one holding `retrolog_survey.py`):
 
 ```bash
-work="$(mktemp -d)"
+work="$(mktemp -d "${TMPDIR:-/tmp}/retrolog_survey.XXXXXX")"
 python3 samples/build_sample_tree.py --out "$work/sample_tree"
 python3 retrolog_survey.py --path "$work/sample_tree" --out "$work/sample_out" --no-convert
 diff "$work/sample_out/report.json" samples/expected_report.json

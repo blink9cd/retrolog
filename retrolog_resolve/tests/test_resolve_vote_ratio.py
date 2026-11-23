@@ -36,6 +36,7 @@ from resolve_fixtures import (  # noqa: E402 - after the sys.path inserts above
     Answering,
     csv_text,
     ol_edition,
+    ol_editions_page,
     ol_payload,
     ol_work,
     parse_row,
@@ -67,6 +68,8 @@ _BOOK_PAGES: dict[str, object] = {
     )
     for step in _STEPS
 }
+# The resolved work's edition list, empty, so the book stays no-isbn.
+_BOOK_PAGES[resolve_books.editions_url("/works/OL1W", 0)] = ol_editions_page()
 
 
 def _not_a_repo(argv: Sequence[str], cwd: Path, timeout: float) -> int:

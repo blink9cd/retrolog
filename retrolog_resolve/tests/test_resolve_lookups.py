@@ -39,6 +39,7 @@ from resolve_rows_case import (  # noqa: E402 - after the sys.path inserts above
     STEP3,
     RowsCase,
     kinds,
+    no_editions,
     ol_url,
 )
 
@@ -56,16 +57,23 @@ class BookChainTest(RowsCase):
         return ol_work(key=key, title=title, editions=(ol_edition(ISBN),))
 
     def test_an_exact_title_with_an_isbn_at_step_one_stops_the_chain(self) -> None:
-        pages = {ol_url("Moby Dick", STEP1): ol_payload(self._work(key="/works/OL7W"))}
+        pages = {
+            ol_url("Moby Dick", STEP1): ol_payload(self._work(key="/works/OL7W")),
+            **no_editions("/works/OL7W"),
+        }
         out, review = self.run_all([input_row("Moby Dick")], pages=pages)
         self.assertEqual(self.status(out[0]), ("resolved", ISBN, "/works/OL7W", ""))
         self.assertEqual(out[0].cells["creator"], "Placeholder Author")
         self.assertEqual(out[0].cells["year"], "1851")
         self.assertEqual(review, ())
-        self.assertEqual(len(self.fetch.calls), 1)
+        # The search, then the resolved work's edition list.
+        self.assertEqual(len(self.fetch.calls), 2)
 
     def test_a_year_parse_read_is_kept(self) -> None:
-        pages = {ol_url("Moby Dick", STEP1): ol_payload(self._work())}
+        pages = {
+            ol_url("Moby Dick", STEP1): ol_payload(self._work()),
+            **no_editions("/works/OL1W"),
+        }
         out, _ = self.run_all([input_row("Moby Dick", work_year=1851)], pages=pages)
         self.assertEqual(out[0].cells["year"], "1851")
 
@@ -73,6 +81,7 @@ class BookChainTest(RowsCase):
         pages = {
             ol_url("Moby Dick", STEP1): ol_payload(self._work("Moby Dick Retold")),
             ol_url("Moby Dick", STEP2): ol_payload(self._work(key="/works/OL8W")),
+            **no_editions("/works/OL8W"),
         }
         out, _ = self.run_all([input_row("Moby Dick")], pages=pages)
         self.assertEqual(self.status(out[0]), ("resolved", ISBN, "/works/OL8W", ""))
@@ -83,6 +92,7 @@ class BookChainTest(RowsCase):
             ol_url("Moby Dick", STEP1): ol_payload(no_isbn),
             ol_url("Moby Dick", STEP2): ol_payload(no_isbn),
             ol_url("Moby Dick", STEP3): ol_payload(ol_work(key="/works/OL9W")),
+            **no_editions("/works/OL9W"),
         }
         out, review = self.run_all([input_row("Moby Dick")], pages=pages)
         self.assertEqual(self.status(out[0]), ("resolved", "", "/works/OL9W", ""))
@@ -111,7 +121,10 @@ class BookChainTest(RowsCase):
         self.assertEqual(len(self.fetch.calls), 3)
 
     def test_an_undated_row_sends_no_year(self) -> None:
-        pages = {ol_url("Moby Dick", STEP1, None): ol_payload(self._work())}
+        pages = {
+            ol_url("Moby Dick", STEP1, None): ol_payload(self._work()),
+            **no_editions("/works/OL1W"),
+        }
         out, _ = self.run_all([input_row("Moby Dick", date="")], pages=pages)
         self.assertEqual(out[0].cells["resolve_status"], "resolved")
 

@@ -1,18 +1,26 @@
 # retrolog_export
 
-Turn a resolved film list into Letterboxd import files. The tool reads the CSV files
+Turn a resolved film list into Letterboxd import files, or a resolved book list into a
+Goodreads import file. For films, the tool reads the CSV files
 `retrolog_resolve` wrote, the operator's export config, and a fresh export of the
 operator's Letterboxd account, and writes numbered import files holding every film
 an earlier import has not sent, one row per logged watch, plus a review list of what
 it held back, skipped, or sent with less than a full match. A film the account's owner
 already logged there by hand is sent without stars, so the rating given there stands.
+For books, `--service goodreads` does the same with the book CSVs and the account's
+Goodreads library export: every book once, leaving out a book the account has read
+or rated and holding back a book whose reads resolve keyed apart (see "Goodreads"). Every section before "Goodreads" describes the Letterboxd
+run; the Goodreads section says what a book run shares with it and what differs.
 This doc calls whoever runs the tools the operator, and the account holder the owner;
 usually they are the same person.
 
-It is the last of four steps: survey the folder (`retrolog_survey`), parse it
-(`retrolog_parse`), resolve each title (`retrolog_resolve`), then export (this tool).
+It runs after three steps: survey the folder (`retrolog_survey`), parse it
+(`retrolog_parse`), and resolve each title (`retrolog_resolve`), whose review list
+`retrolog_review` helps settle. Two optional tools follow it for films only:
+`retrolog_probe` finds the films Letterboxd lacks in the import files, and
+`retrolog_restore` rebuilds diary entries deleted before an import.
 Nothing leaves the machine: the tool sends no request, and the operator uploads the
-files on Letterboxd's import page.
+files on the service's import page.
 
 **The output holds the operator's own titles.** The import files are the operator's
 lists, ratings, and comments, and the review quotes their titles. Treat them as being
@@ -27,21 +35,22 @@ through `retrolog_resolve`.
 ## Usage
 
 ```bash
-python retrolog_export.py --service letterboxd --resolved path/to/resolved --account path/to/letterboxd-export.zip --config path/to/export.toml --out path/to/export
+python retrolog_export.py --service letterboxd --resolved path/to/resolved --account path/to/letterboxd-export.zip --config path/to/export.toml --out path/to/letterboxd
+python retrolog_export.py --service goodreads --resolved path/to/resolved --account path/to/goodreads_library_export.csv --config path/to/export.toml --out path/to/goodreads
 ```
 
 | Option | Required | Default | Meaning |
 | --- | --- | --- | --- |
-| `--service` | yes | | The service to write import files for. Only `letterboxd` exists. |
+| `--service` | yes | | The service to write import files for: `letterboxd` (films) or `goodreads` (books). |
 | `--resolved` | yes | | retrolog_resolve's output folder (read only). See "The resolve folder". |
-| `--account` | yes | | A fresh export of the account: its `.zip`, or the folder it unpacks to (read only). See "The account export". |
+| `--account` | yes | | A fresh export of the account (read only): Letterboxd's `.zip`, or the folder it unpacks to (see "The account export"); Goodreads' `goodreads_library_export.csv` (see "The library export"). |
 | `--config` | yes | | The export config file (see "The export config"). |
-| `--out` | yes | | Output directory; refused inside `--resolved`, inside an `--account` folder, or inside a git work tree. |
-| `--rows-per-file` | no | `1900` | The most data rows one import file holds, 1 to 1900. |
-| `--max-bytes` | no | `1000000` | The most bytes one import file holds, header included, 1024 to 1000000. |
+| `--out` | yes | | Output directory; refused inside `--resolved`, inside an `--account` folder, or inside a git work tree, and refused when it holds another service's import files. Give each service its own: a run replaces only its own service's files and the one review, so a shared folder would lose the other run's review and keep its files. |
+| `--rows-per-file` | no | the service's | The most data rows one import file holds, from 1 to the service's default: `1900` for `letterboxd`, `10000` for `goodreads`. |
+| `--max-bytes` | no | the service's | The most bytes one import file holds, header included, from 1024 to the service's default: `1000000` for `letterboxd`, `10000000` for `goodreads`. |
 | `--timeout` | no | `15.0` | Seconds per git call of the `--out` check: greater than 0 and at most 3600. |
 | `--dry-run` | no | off | Check everything a run checks, `--out` included, and print the summary a run would, but write nothing, not even `--out` (see "The dry run"). |
-| `--test-film` | no | off | Write only `letterboxd-test.csv`, every row of one `logged-no-stars` film, to import before the rest (see "The test run"). Not with `--dry-run`. |
+| `--test-film` | no | off | Letterboxd only: write only `letterboxd-test.csv`, every row of one `logged-no-stars` film, to import before the rest (see "The test run"). Not with `--dry-run`. |
 
 Prerequisites: Python 3.12 or later, and nothing installed into it: the tool imports
 the standard library only. It also imports modules from its sibling
@@ -51,8 +60,9 @@ finds through the project's one bootstrap, the `retrolog_bootstrap` folder besid
 own, so it runs from the tree it ships in.
 
 Whenever it writes the output (exit `0` or `1`), and on a dry run, the tool prints a
-summary to standard output, counts only and no title: `films sent`, `rows sent`,
-`rows cut`, and `files`, then `review <kind>: <n>` for each review kind that occurred,
+summary to standard output, counts only and no title: `films sent` (`books sent` for
+Goodreads), `rows sent`, `rows cut`, and `files`, then `review <kind>: <n>` for each
+review kind that occurred,
 in the order of the table under "Review kinds". With exit `1`, standard error adds
 `<program>: <n> error item(s); see review.md`, or, on a dry run, which writes no
 `review.md`, `<program>: <n> error item(s); rerun without --dry-run to write review.md`.
@@ -109,8 +119,8 @@ again, unless it was chosen with no row the import could tag ("Which film" above
 | Code | Meaning |
 | --- | --- |
 | `0` | Output written (a dry run: checked), and no review entry is an error; a test run: its file written. |
-| `1` | Output written (a dry run: checked), but the review lists a held film (`held-ambiguous`, `held-failed`, `held-split`, or `held-no-title`). Every other film was written, but settle each held film before importing any file (see "Which films are sent"). Read `review.md`. |
-| `2` | Bad arguments; `--resolved` missing, unreadable, holding no film CSV, or holding a CSV that is not resolve's (an older resolve's among them); the config unreadable, invalid, missing a rating key a row carries, holding an `omit` entry that names no row, or holding no `[letterboxd]` table; the account export unreadable, too large, holding none of the files it should, or holding a damaged one; a cutoff naming no row; a film too large for one file; `--test-film` with no `logged-no-stars` film; `--test-film` with `--dry-run`; `--out` refused; or the output could not be written. Apart from a failed write, nothing is written, and an earlier output is left as it was. Each message names the problem and the option, the config key, or the file inside the account export, never a path or a value. |
+| `1` | Output written (a dry run: checked), but the review lists a held film or book (`held-ambiguous`, `held-failed`, `held-split`, or `held-no-title`). Every other item was written, but settle each held one before importing any file (see "Which films are sent", and for books "Goodreads books and their rows"). Read `review.md`. |
+| `2` | Bad arguments, a `--rows-per-file` or `--max-bytes` above the service's default, or `--test-film` with `--service goodreads`; `--resolved` missing, unreadable, holding no CSV of the service's medium, or holding a CSV that is not resolve's (an older resolve's among them); the config unreadable, invalid, missing a rating key a row carries, holding an `omit` entry that names no row, holding no table for `--service` (`[letterboxd]` or `[goodreads]`), or, for Goodreads, naming no `undated_date_added` while a row is undated; the account export unreadable, too large, holding none of the files it should, or holding a damaged one (for Goodreads: a folder or a zip, a missing required column, or no book); a cutoff naming no row; an item too large for one file; `--test-film` with no `logged-no-stars` film; `--test-film` with `--dry-run`; `--out` refused, or holding another service's import files; or the output could not be written. Apart from a failed write, nothing is written, and an earlier output is left as it was. Each message names the problem and the option, the config key, or the file inside the account export, never a path or a value. |
 
 ## Run order
 
@@ -319,9 +329,9 @@ and years, or, with `watched_date` on, a title and a row date. Here, as in the s
 a title is any list or TMDb title of the film, compared plain and folded as under "The
 account export".
 
-Holding both films on a shared title and date is the owner's ruling (2026-11-01). It
-extends the earlier rule, made with the near-year matches, that kept hold sharing to
-an exact title and year.
+Sharing a hold on a title and date, not only on an exact title and year, is
+deliberate: the tagged-date rule matches a date in any year, so an exact title and
+year alone would let the next run skip the held film.
 
 ## Columns
 
@@ -453,14 +463,16 @@ entries, ordered by title and kind.
 | File | Holds |
 | --- | --- |
 | `letterboxd-001.csv` onward | The import files, to upload in number order. None when no film is to be sent. |
+| `goodreads-001.csv` onward | A Goodreads run's import files: one, by default (see "Goodreads"). None when no book is to be sent. |
 | `letterboxd-test.csv` | A test run's only file, one `logged-no-stars` film (see "The test run"); never beside the files above. |
-| `review.json` | `schema_version` (`1`), `counts` (every review kind, zero included, and `films-sent`, `rows-sent`, `rows-cut`, and `files`) and `entries`. |
+| `review.json` | `schema_version` (`1`), `counts` (every review kind the service's medium can earn, zero included, and `films-sent` or `books-sent`, `rows-sent`, `rows-cut`, and `files`) and `entries`. |
 | `review.md` | The same entries as tables, one per kind, for reading. |
 | `.retrolog_export` | A marker that lets a later run reuse this directory. |
 
 Each file is UTF-8 with Unix line ends and is replaced atomically. A run that gets as
 far as writing first removes the earlier run's `review.json`, `review.md`, and every
-`letterboxd-*.csv`, the test file included, then writes the import files, then the
+import file of its service (`letterboxd-*.csv`, the test file included, or
+`goodreads-*.csv`), then writes the import files, then the
 review last. So a file from an earlier, larger run is never uploaded by mistake, and a
 folder holding numbered import files but no review is a run that did not finish: run
 it again before uploading anything. A test run removes the same files, then writes its
@@ -495,8 +507,260 @@ this tool's marker. `--resolved` and `--account` are only read.
   it, the next run finds the film only watched or logged, and sends it again: in full
   when watched only, without stars when rated.
 - **A by-title film is Letterboxd's match, not this tool's.** Read the preview.
-- **One service.** `--service` takes `letterboxd` only, and reads only the
-  `film-*.csv` files; book CSVs in the same folder are never opened.
+- **One medium a service.** `--service letterboxd` reads only the `film-*.csv` files
+  and `--service goodreads` only the `book-*.csv` files; the other medium's files in
+  the same folder are never opened. Goodreads' own limits are under "The Goodreads
+  import".
+
+## Goodreads
+
+`--service goodreads` writes the books resolve settled into `goodreads-001.csv`, the
+file Goodreads' importer takes, plus the same `review.json` and `review.md`. It reads
+every `book-<year>.csv` and `book-undated.csv` in `--resolved`, as a film run reads
+the film CSVs, and the `[goodreads]` table of the same export config. These work as
+they do for films: the checks of every cell, the cutoff, the omit list (naming a book
+by its title and resolve's `year`), the holds of an `ambiguous` or `failed` row and
+of a title with no letter or digit, the formula-cell check, the dry run, `--out`, and
+the output files. What differs is below. `--test-film` is Letterboxd's alone and is
+refused for books.
+
+### Goodreads run order
+
+1. Run `retrolog_resolve` on the book CSVs, with an `--out` of its own, since each
+   resolve run rewrites its folder's `review.md` with that run's medium only:
+
+   ```bash
+   python retrolog_resolve.py --parsed path/to/parsed --out path/to/resolved-books --medium book --overrides path/to/overrides.toml
+   ```
+
+   Settle its `review.md`. Resolve looks up each override book's work and authors and
+   picks each work's ISBN-13 from its edition list, so rerun it after adding an
+   override or updating the tools.
+2. Before the first run, write the export config's `[goodreads]` table (see "The
+   `[goodreads]` table" below).
+3. On Goodreads, export the library (My Books, "Import and export", "Export
+   Library") and download `goodreads_library_export.csv`. Do this before **every**
+   run: the file is what keeps a book the account already has from being sent again.
+4. Run this tool with `--dry-run` first, then for real, and read `review.md`. Settle
+   each held book it lists (see "Goodreads books and their rows" and "Which films are
+   sent") and run again, until it exits `0` or holds only `held-no-title` books,
+   which are added by hand.
+5. Remove from Goodreads every book `review.md` lists `remove-first` (see "Books
+   already on a shelf" below).
+6. On Goodreads' import page ("Import and export", "Import"), upload
+   `goodreads-001.csv`, in one go (see "The feed" below).
+7. After the import: check the `by-title` and `title-only` books (see "The Goodreads
+   import").
+8. Export the library again and run this tool once more, into a new `--out`, to
+   confirm. Expect no import file: every imported book is listed `on-service`, and
+   every book the omit list names `omitted`. A book still sent is one the import did
+   not land as read, such as a `by-title` or `title-only` book Goodreads matched to
+   another work or did not find: look it up before importing anything. Export the
+   library again before any later run, too.
+
+### The library export
+
+`--account` names the one CSV that "Export Library" gives. A folder or a zip is
+refused, since the download is never either. The file is held to the same bounds as
+a Letterboxd export file (32 MiB, and one cell as long as the whole file), and must
+carry the columns `Title`, `Author`, `ISBN13`, `My Rating`, `Exclusive Shelf`, and
+`Read Count`; others are ignored. Goodreads writes an ISBN cell as `="9780000000002"`
+so a spreadsheet keeps its digits; the wrapper is dropped. A file missing a column,
+or holding no book, stops the run with exit `2`.
+
+Each book the export lists is either read or shelved, and that decides whether a
+book from the lists is sent:
+
+| The library export lists the book | What is sent | Listed as |
+| --- | --- | --- |
+| Not at all | The book. | nothing for the account |
+| On the `read` shelf, or with a rating above 0 or a read count above 0, on any shelf | Nothing: sending it would overwrite the rating or date given there, or add a second read. | `on-service` |
+| On any other shelf with no rating: to-read, currently reading, or an exclusive custom shelf | The book, in full, with the tag `goodreads.shelf_tags` gives that shelf, if any. | `remove-first` |
+
+A book from the lists matches an account book by ISBN-13, else by title and author.
+A title is compared ignoring case, spacing, and punctuation, with a trailing series
+part such as `(Name, #3)` dropped, and once more with any subtitle after the first
+`:` dropped too; either form matching is enough. An author is the last word of the
+first author's name, with accents dropped, so `Le Guin` against `Guin`, or a drift in
+initials, does not split a match. A book from the lists with no author matches its
+title alone, and the `on-service` detail says so.
+
+The holds reach one step further for books, as they do for films: a free book that
+shares a held book's title and author would put that title on the account, and the
+next run would then skip the held book as read. So it is held with it, under the
+same kind and as an error. A book with no author shares a title with a held book of
+any author.
+
+### Goodreads books and their rows
+
+The rows are grouped into books: a book is its ISBN-13, else its Open Library work
+key, else its title and its first author's last name. Goodreads keeps one record a
+book, and a second import overwrites the first, so **a book read more than once is
+sent as one row**: its newest read, by date, then file, then line, with that read's
+date and rating. The earlier reads' years can go into Private Notes
+(`private_note_earlier`), and the book is listed `reread-merged`. Reads merge only
+when they share that key, so **reads of one book keyed apart are held**, every one of
+them, as `held-split` errors: two books that share an Open Library work key, that
+share a title and first author's last name, or where one has no author and its title
+is the other's. A title is compared as the account match compares one: a trailing
+series part dropped, and a match of either the whole title or the part before its
+subtitle (before the first `:`) is enough. A shared title alone does not hold two
+books whose full titles (subtitle kept) differ, when each carries an Open Library
+work and the two works differ: they are treated as different books, as two volumes of
+one collection are (`Collected Stories: Volume One` and `Volume Two`), and both are
+sent. One book whose two subtitled forms resolved to two duplicate work records is
+sent twice the same way, unless an override gives both reads the same work. Two
+reads with the same full title are held even when their works differ, since Open
+Library often keeps two work records for one book, and so are two subtitled forms of
+one title when either has no work. So two reads of one title and author resolved to
+two ISBN-13s are such a book, and so is a read resolve found by search beside an
+override that names no work (an `isbn13` alone, or nothing), even when the override's
+title adds a subtitle. Sending both would put a second row in the file that
+overwrites the first. Settle it with title-only resolve overrides that give every read
+the same answer (the same `isbn13` and `ol_work`): an override applies to the rows of
+its own title only, so reads whose list titles differ (a work shared under two
+titles, say) need one override for each title. Rerun resolve, then this tool. When
+the held books are in fact different books, an override would merge them: name one
+in `[[goodreads.omit]]` instead, and the other is sent. The omitted book is never
+exported, so add it on Goodreads by hand. An omit entry names every book with a read
+of its title (compared ignoring case, spacing, and punctuation, subtitle included) in
+its `year`, or with no year when it names none, so it cannot tell apart two
+different books listed under the same title with the same year, or both with no
+year: it leaves out both, and both must then be added by hand. A held group the
+account has already read whole, every book of it skipped as `on-service`, is not
+held, since nothing would be sent.
+So no book is sent twice in one file, and the order inside the file does not matter.
+Books are ordered by their sent row, undated rows first, then by date, file, and line.
+
+How Goodreads finds the book depends on what resolve gave it:
+
+| The book's sent row has | Goodreads matches it by | Listed as |
+| --- | --- | --- |
+| An ISBN-13 (a `resolved` book, an override naming one, or an override naming a work resolve found one for: the pick from the work's edition list, or another row's ISBN-13 for that work, an override's own or a search's) | `ISBN13` | nothing, unless unrated or undated |
+| An ISBN-13 and a work key but no author: an override whose work lookup failed | `ISBN13` | `author-missing`: rerun resolve to fill the author |
+| No ISBN-13, and an author: an override naming a work for which resolve found no ISBN-13 (no edition list pick, and no other row of the work carrying one), or a `not-found` book whose list gave an author | `Title` and `Author` | `by-title` |
+| No ISBN-13 and no author: an `unresolvable` override, an override whose work lookup failed, or a `not-found` book whose list gave none | `Title` alone | `title-only` |
+
+An override whose work lookup failed and that has no ISBN-13 either is listed
+`title-only`, not `author-missing`: Goodreads will match it by its title alone, which
+is the more pressing check. To leave a book out of the import for good (an
+`unresolvable` book Goodreads would not find, say), name it in `[[goodreads.omit]]`.
+
+### Goodreads columns
+
+Every Goodreads import file has these columns, in this order:
+
+| Column | Comes from |
+| --- | --- |
+| `Title` | parse's `title`. |
+| `Author` | The first name in resolve's `creator`; empty for a book with none. |
+| `Additional Authors` | The other names in `creator`, joined by a comma and a space. |
+| `ISBN` | Always empty: resolve keeps one ISBN-13 a book, and the import matches on it. |
+| `ISBN13` | resolve's `isbn13`; empty when it has none. |
+| `My Rating` | `goodreads.ratings` for the row's `rating_raw`, written like `2.5` or `5` (Goodreads keeps a half star); empty for an unrated row. |
+| `Date Read` | The row's date, written `2010/05/06` as the library export writes one; empty for an undated row. |
+| `Date Added` | The same date, so the import sorts the book into the past (see "Backdating" below); for an undated row, `goodreads.undated_date_added`. |
+| `Bookshelves` | `goodreads.shelves`, then for a `remove-first` book the tag `goodreads.shelf_tags` gives its shelf, joined by a comma and a space. |
+| `Exclusive Shelf` | Always `read`. |
+| `My Review` | The row's comment, and nothing else. |
+| `Private Notes` | The note, its rating sentence, and the earlier-reads sentence, joined by spaces (see below). |
+
+As for films, a `Title`, `Author`, `Additional Authors`, `My Review`, or
+`Private Notes` cell that starts with a formula character is written as it is and
+listed `formula-cell`.
+
+### The `[goodreads]` table
+
+| Key | Required | Meaning |
+| --- | --- | --- |
+| `goodreads.shelves` | yes | Shelves written to every row, at least one. Each is 1 to 50 lowercase letters, digits, hyphens, or underscores (Goodreads' own rule: no comma, space, or capital), and starts with `retrolog`, as every Letterboxd tag does. |
+| `goodreads.ratings` | yes | Each rating key a row can carry, mapped to stars from 0.5 to 5 in halves. |
+| `goodreads.undated_date_added` | when a row is undated | The `Date Added` an undated row gets, a TOML date such as `1900-01-01`. An undated row with none stops the run before anything is written, even when that row would be cut, omitted, or merged away: the check reads the rows before selection, so a run never fails or passes on what the account holds. A sent undated row with no `Date Added` would be dated today by the import and sorted above current reading. |
+| `goodreads.private_note` | no | The note written to Private Notes on every row, at most 500 characters, with `{year}` and `{date}` as for `letterboxd.review_note`; an undated row leaves out a note naming either. |
+| `goodreads.private_note_rating` | no | A sentence after the note on a rated row only, with `{rating}`, the word `goodreads.rating_names` gives the key. |
+| `goodreads.rating_names` | no | The word for each rating key, as `letterboxd.rating_names`. A sentence naming `{rating}` needs a word for every key. |
+| `goodreads.private_note_earlier` | no | A sentence after the others on a merged reread only, with `{years}`, the earlier reads' years, oldest first, joined by a comma and a space. |
+| `goodreads.cutoff` | no | As `letterboxd.cutoff` (see "The cutoff"). |
+| `goodreads.omit` | no | Books never sent, one `[[goodreads.omit]]` table each, by `title` and `year` (see "The omit list"). |
+| `goodreads.shelf_tags` | no | An account shelf mapped to the tag shelf a `remove-first` book on it adds to its row, such as `"donation-shelf" = "donation-shelf-read"`; a shelf with no entry adds no tag. Both names obey the shelf rule above, but a tag needs no `retrolog` prefix: it keeps the account's own grouping. Every row still carries `goodreads.shelves`. |
+
+A config may hold `[letterboxd]`, `[goodreads]`, or both; `--service` names the one
+read, and a run whose table is missing stops with exit `2`.
+
+### Private Notes and the shelf
+
+Goodreads keeps My Review and Private Notes as separate fields, so the note this tool
+adds goes to Private Notes, which only the owner sees, and My Review holds only the
+lists' own comment. With the example config, a rated book read twice reads:
+
+```text
+Example import. Read 2019. Lists said: good. Earlier reads: 2010.
+```
+
+Every row is shelved with `goodreads.shelves`, normally one shelf, `retrolog`, so
+that shelf lists everything the import added and is where to undo it. There is no
+shelf per rating: Goodreads shelves are public, and Private Notes already keeps the
+lists' verdict.
+
+### The Goodreads import
+
+Goodreads shows no preview before an import and has no undo, so read `review.md`
+first, remove the `remove-first` books before the upload, and do the other checks
+below after it.
+
+- **The feed.** Every rated row posts a "rated a book" update to the owner's
+  followers, once per book, backdated or not, and a CSV cannot turn it off. Import
+  the whole file in one go, so it is one burst rather than several.
+- **Backdating.** The importer honors `Date Added`, and the account's read-shelf
+  views and widgets order books by it, not by the date read. So each row's
+  `Date Added` is its read date, and an imported book sorts into the past instead of
+  above the owner's current reading; an undated book gets the config's early date and
+  sorts to the bottom. Should an import ignore the column, the fallback is to delete
+  and re-add the three newest real books afterward, which puts them back on top but
+  loses their started dates, any likes and comments on their reviews, and their
+  original date added.
+- **Books already on a shelf.** A book the library export has on a shelf other
+  than `read`, with no rating and no read count (to-read, currently reading, or an
+  exclusive custom shelf such as a giveaway pile), is sent and listed `remove-first`,
+  its detail naming the shelf. Before the import, remove each of those books from
+  Goodreads: on My Books, Batch Edit, select them by the review's list, and remove
+  them from all shelves. Each then arrives as a new book: on `read`, with its
+  Private Notes, its backdated `Date Added`, and the tag `goodreads.shelf_tags`
+  gives its old shelf, which keeps that grouping without a pass afterward. It loses
+  only the date it was first shelved. A book left in place is updated instead: it
+  takes the rating, read date, and review, but stays on its custom shelf, uncounted
+  as read, with no Private Notes and its own `Date Added`; and moving it to `read`
+  afterward posts "finished reading" to the feed.
+- **Title matches.** A book sent by Title and Author, or by Title alone, can land on
+  another edition, or on another work altogether: a study guide to the book, by
+  another author, has taken a book's rating and note and posted to the feed. Open
+  each `by-title` and `title-only` book after the import and check it.
+- **Undoing a book's read by hand.** Returning a book to the shelf it was on takes
+  three controls: its status, each tag shelf (Batch Edit, remove from that shelf),
+  and the Remove on its "Dates read" row. Clearing the date's fields alone leaves an
+  empty reading, the library export still gives a read count of 1, and the next run
+  lists the book `on-service`.
+- **The files hold the owner's titles.** As for films, the import file and the review
+  quote the operator's own titles and notes: keep them as private as the lists.
+
+### Goodreads review kinds
+
+A book run's review lists only the kinds a book can earn: never `same-date`,
+`logged-no-stars`, `watched-only`, or `override-unchecked`, which are Letterboxd's.
+`held-ambiguous`, `held-failed`, `held-no-title`, `omitted`, and `formula-cell` mean
+what they do for films; the others mean:
+
+| Kind | Error | Meaning | What the operator does |
+| --- | --- | --- | --- |
+| `held-split` | yes | One book's reads are keyed apart: they share a work key, or a title (its subtitle dropped or kept) and author, but not the ISBN-13 or work that keys a book (see "Goodreads books and their rows"). A shared title alone does not hold books whose full titles differ and that each carry a different work, such as two volumes of one collection. Every such book is held, never merged, since a second row would overwrite the first. | Give every read the same answer with title-only resolve overrides, one for each list title the reads carry, rerun resolve, then this tool. If the books are in fact different, name one in `[[goodreads.omit]]` instead and add it on Goodreads by hand; an entry cannot tell apart two books listed under one title and year. |
+| `on-service` | no | The library export lists the book as read, or rated or read on any shelf, so it was not sent. The detail says when the match was by title alone. | Nothing; check the match when it was by title alone. |
+| `remove-first` | no | Sent, though the library export has the book on another shelf, with no rating or read count; the detail names the shelf. Its row adds the tag `goodreads.shelf_tags` gives that shelf. | Remove it from Goodreads before the import (see "Books already on a shelf"). |
+| `by-title` | no | Sent by Title and Author, with no ISBN-13. | After the import, check that Goodreads matched the right edition. |
+| `title-only` | no | Sent by Title alone, with no ISBN-13 and no author. | After the import, check that Goodreads found it; or omit it. |
+| `author-missing` | no | An override whose Open Library work gave no author: sent by its ISBN-13, but the author would sharpen the next run's match. | Rerun resolve to fill the author. |
+| `reread-merged` | no | Read more than once in the lists, and sent once, as its newest read; the detail says how many reads were merged. | Nothing. |
+| `unrated` | no | Sent with no rating. | Rate it by hand on Goodreads. |
+| `undated` | no | Sent with no read date; its `Date Added` is the config's. | Nothing, or add the date by hand. |
 
 ## Samples
 
@@ -504,5 +768,11 @@ this tool's marker. `--resolved` and `--account` are only read.
 and the output this tool writes for them with `--rows-per-file 4`
 (`samples/expected/`), which shows a film's two rows kept together, a split into two
 files, every review kind, an omitted film, and a film in each account class, and the
-test run's file for them (`samples/expected-test/`). `samples/README.md` gives the
-commands to build the inputs, run the tool, dry run it, and compare.
+test run's file for them (`samples/expected-test/`). With `--service goodreads`, the
+builder writes book CSVs, a library export, and the same config instead, and
+`samples/expected-goodreads/` holds the one import file and review the tool writes
+for them, which show every book kind: a reread merged, a book on the account's custom
+shelf sent and listed `remove-first` with its tag, one on `to-read` listed with no
+tag, one rated on the custom shelf left out, and a book matched each way.
+`samples/README.md` gives the commands to build the inputs, run the tool, dry run
+it, and compare.

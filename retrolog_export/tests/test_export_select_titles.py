@@ -39,6 +39,7 @@ from select_case import (  # noqa: E402 - after the sys.path inserts above
     FilmIdentity,
     imported,
     kinds,
+    letterboxd_select,
     make_row,
     select,
     sent,
@@ -58,7 +59,7 @@ def _real(
     rows: list[ResolvedRow], account: frozenset[FilmKey]
 ) -> export_select.Selection:
     """``select`` with export_account's own ``on_service``, as the CLI runs it."""
-    return export_select.select(
+    return letterboxd_select(
         rows,
         cutoff=None,
         account=imported(account),

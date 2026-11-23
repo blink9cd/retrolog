@@ -10,16 +10,8 @@ own.
 
 from __future__ import annotations
 
-from export_types import (
-    MAX_HALF_STARS,
-    MIN_HALF_STARS,
-    NOTE_DATE_FIELDS,
-    SENT_BY_ID,
-    SENTENCE_FIELDS,
-    LetterboxdConfig,
-    ResolvedRow,
-    template_names_any,
-)
+from export_cells import note_text, sentence_text, stars
+from export_types import SENT_BY_ID, LetterboxdConfig, ResolvedRow
 from resolve_columns import CREATOR_JOINER
 
 COLUMNS = (
@@ -43,14 +35,6 @@ _NOTE_JOINER = "\n\n"
 _SENTENCE_JOINER = " "
 
 
-def stars(half_stars: int) -> str:
-    """Half stars as Letterboxd writes a rating: 7 is ``"3.5"``, 10 is ``"5"``."""
-    if not MIN_HALF_STARS <= half_stars <= MAX_HALF_STARS:
-        raise ValueError(f"half stars must be {MIN_HALF_STARS} to {MAX_HALF_STARS}")
-    whole, half = divmod(half_stars, 2)
-    return f"{whole}.5" if half else str(whole)
-
-
 def review_text(row: ResolvedRow, config: LetterboxdConfig) -> str:
     """The row's comment, with the review note and the rating sentence above it when asked for.
 
@@ -63,41 +47,14 @@ def review_text(row: ResolvedRow, config: LetterboxdConfig) -> str:
     ):
         return row.comment
     lead = _SENTENCE_JOINER.join(
-        part for part in (_note(row, config), _sentence(row, config)) if part
+        part
+        for part in (
+            note_text(config.review_note, row),
+            sentence_text(config.review_note_rating, row, config.rating_names),
+        )
+        if part
     )
     return _NOTE_JOINER.join(part for part in (lead, row.comment) if part)
-
-
-def _note(row: ResolvedRow, config: LetterboxdConfig) -> str:
-    """The review note for ``row``, or "" when there is none.
-
-    Its ``{year}`` and ``{date}`` are the watch's year and ISO date, so an undated row
-    leaves out a note naming either, rather than print it with a blank where the date
-    belongs.
-    """
-    if row.date is None:
-        if template_names_any(config.review_note, NOTE_DATE_FIELDS):
-            return ""
-        return config.review_note.format()
-    return config.review_note.format(year=str(row.date.year), date=row.date.isoformat())
-
-
-def _sentence(row: ResolvedRow, config: LetterboxdConfig) -> str:
-    """The rating sentence for a rated ``row``, its ``{rating}`` the key's word; else "".
-
-    An unrated row has no word to print, so it keeps the note and drops the sentence.
-    The word is looked up only for a sentence naming ``{rating}``: ``load_config``
-    refuses such a sentence while any key lacks a word, and ``check_keys`` every row
-    key ``ratings`` lacks, so the lookup cannot miss. It is indexed rather than given
-    a default, so a broken guarantee stops the run instead of printing a blank word
-    into every review.
-    """
-    sentence = config.review_note_rating
-    if not sentence or not row.rating_raw:
-        return ""
-    if not template_names_any(sentence, SENTENCE_FIELDS):
-        return sentence.format()
-    return sentence.format(rating=config.rating_names[row.rating_raw])
 
 
 def _tags(row: ResolvedRow, config: LetterboxdConfig) -> str:

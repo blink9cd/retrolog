@@ -429,13 +429,22 @@ _MIN_GROUPED_TESTS_BY_FILE = {
     "test_drain_interrupt.py": 6,
     "test_fixture_lifetime.py": 2,
     "test_inherit_stderr.py": 2,
-    "test_job_containment.py": 8,
+    "test_job_containment.py": 11,
     "test_kernel_job_api.py": 13,
     "test_live_registry.py": 11,
+    "test_memory_fail_closed.py": 18,
+    "test_memory_limit.py": 11,
+    "test_memory_readers.py": 26,
+    "test_memory_watchdog.py": 15,
     "test_nested_tree_kill.py": 1,
     "test_posix_tree.py": 29,
+    "test_root_unreadable.py": 10,
     "test_spawn_flags.py": 8,
     "test_spawn_window.py": 10,
+    "test_stream_bounded.py": 25,
+    "test_stream_tree.py": 5,
+    "test_tree_observer.py": 9,
+    "test_tree_walk_bound.py": 6,
 }
 
 

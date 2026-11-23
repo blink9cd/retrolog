@@ -11,7 +11,7 @@ placeholder such as `Placeholder Film Two`, and every id is made up.
 From the tool's folder (the one holding `retrolog_probe.py`):
 
 ```bash
-work="$(mktemp -d)"
+work="$(mktemp -d "${TMPDIR:-/tmp}/retrolog_probe.XXXXXX")"
 python3 samples/build_probe_inputs.py --out "$work"
 python3 retrolog_probe.py --files "$work/files" --cache "$work/cache.json" --cache-only --out "$work/report.md"
 diff "$work/report.md" samples/expected/report.md

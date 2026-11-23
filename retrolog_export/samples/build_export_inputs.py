@@ -1,5 +1,8 @@
 """Write the synthetic resolve folder, account export, and config of export's sample.
 
+``--service`` picks the sample: ``letterboxd``, the default, described here, or
+``goodreads``, whose book inputs ``goodreads_inputs`` beside this file writes.
+
 Every title is a placeholder (``Placeholder Film One``, or ``???`` for a title with no
 letter or digit), every director's name is a placeholder too, and every id is made up,
 so the sample holds no real list and no real account, and no real film is paired
@@ -37,16 +40,19 @@ import retrolog_bootstrap  # noqa: E402 - after the sys.path append above
 
 retrolog_bootstrap.add_shared("stdio_utf8", "help_formatter")
 # Then the tool's own modules, resolve's, parse's, and the survey's, then the test
-# fixture builders.
+# fixture builders, then this folder for the Goodreads inputs: an isolated run
+# (python -I) does not put a script's own folder on sys.path.
 sys.path[:0] = [
     str(_TOOL / "src"),
     str(_TOOL.parent / "retrolog_resolve" / "src"),
     str(_TOOL.parent / "retrolog_parse" / "src"),
     str(_TOOL.parent / "retrolog_survey" / "src"),
     str(_TOOL / "tests" / "fixtures"),
+    str(_HERE),
 ]
 
 import export_fixtures as fx  # noqa: E402 - after the sys.path inserts above
+import goodreads_inputs  # noqa: E402 - after the sys.path inserts above
 import help_formatter  # noqa: E402 - after the bootstrap above
 import stdio_utf8  # noqa: E402 - after the bootstrap above
 
@@ -291,8 +297,12 @@ def write_inputs(out: Path) -> None:
     shutil.copyfile(_HERE / "export.example.toml", out / "export.toml")
 
 
+# Each service's inputs: Letterboxd's are this file's, Goodreads' goodreads_inputs'.
+_WRITERS = {"letterboxd": write_inputs, "goodreads": goodreads_inputs.write_inputs}
+
+
 def build_parser() -> argparse.ArgumentParser:
-    """The CLI: one named option."""
+    """The CLI: two named options."""
     parser = argparse.ArgumentParser(
         description="Write retrolog_export's synthetic sample inputs.",
         formatter_class=help_formatter.ReqAwareDefaultsFormatter,
@@ -302,6 +312,12 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         required=True,
         help="Directory to write the inputs into; it must be missing or empty.",
+    )
+    parser.add_argument(
+        "--service",
+        choices=sorted(_WRITERS),
+        default="letterboxd",
+        help="The service whose sample inputs to write.",
     )
     return parser
 
@@ -314,7 +330,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.out.exists() and any(args.out.iterdir()):
         print(f"{parser.prog}: --out must be missing or empty", file=sys.stderr)
         return _EXIT_USAGE
-    write_inputs(args.out)
+    _WRITERS[args.service](args.out)
     return _EXIT_OK
 
 

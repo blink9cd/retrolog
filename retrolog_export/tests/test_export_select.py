@@ -32,6 +32,7 @@ from select_case import (  # noqa: E402 - after the sys.path inserts above
 )
 from select_case import day as _day  # noqa: E402 - after the sys.path inserts above
 from select_case import kinds as _kinds  # noqa: E402 - after the sys.path inserts
+from select_case import letterboxd_select  # noqa: E402 - after the sys.path inserts
 from select_case import make_row as _row  # noqa: E402 - after the sys.path inserts
 from select_case import select as _select  # noqa: E402 - after the sys.path inserts
 from select_case import sent as _sent  # noqa: E402 - after the sys.path inserts above
@@ -52,7 +53,11 @@ class KindsTest(unittest.TestCase):
                 "logged-no-stars",
                 "watched-only",
                 "override-unchecked",
+                "remove-first",
                 "by-title",
+                "title-only",
+                "author-missing",
+                "reread-merged",
                 "unrated",
                 "undated",
                 "formula-cell",
@@ -216,7 +221,7 @@ class HoldTest(unittest.TestCase):
                 year=1927,
             ),
         ]
-        chosen = export_select.select(
+        chosen = letterboxd_select(
             rows,
             cutoff=None,
             account=Account(),
@@ -295,7 +300,7 @@ class AccountTest(unittest.TestCase):
             asked.append((key, given_account))
             return False
 
-        export_select.select(
+        letterboxd_select(
             [_row(year=None)],
             cutoff=None,
             account=account,

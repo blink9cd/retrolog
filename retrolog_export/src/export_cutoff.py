@@ -1,9 +1,10 @@
 """Leave out every row from the operator's cutoff onward.
 
-When the account already holds every film from some point of the lists onward (the
-operator has logged live since), ``letterboxd.cutoff`` names the first source row of
-that point. ``apply_cutoff`` keeps every undated row and every dated row before it, in
-parse's order (date, file, line). ``export_select`` runs it first.
+When the account already holds every item from some point of the lists onward (the
+operator has logged live since), the service table's ``cutoff``
+(``letterboxd.cutoff``) names the first source row of that point. ``apply_cutoff``
+keeps every undated row and every dated row before it, in parse's order (date, file,
+line). ``export_select`` runs it first.
 """
 
 from __future__ import annotations
@@ -28,13 +29,14 @@ def _cut_order(row: ResolvedRow) -> tuple[datetime.date, str, int]:
 
 
 def apply_cutoff(
-    rows: Sequence[ResolvedRow], cutoff: Cutoff | None
+    rows: Sequence[ResolvedRow], cutoff: Cutoff | None, *, where: str
 ) -> tuple[list[ResolvedRow], int]:
     """The rows the cutoff keeps, and how many it cut.
 
     Raises ``CutoffError`` when no dated row sits at the cutoff's file and line with
     its title, since a numbering slip must not silently cut the wrong rows. The
-    message names the config key only, never the position or the title.
+    message names the config key only, ``where`` (``letterboxd.cutoff``), never the
+    position or the title.
     """
     if cutoff is None:
         return list(rows), 0
@@ -47,7 +49,7 @@ def apply_cutoff(
     ]
     if not named:
         raise CutoffError(
-            "letterboxd.cutoff names no dated row with that title at that position"
+            f"{where} names no dated row with that title at that position"
         )
     start = min(_cut_order(row) for row in named)
     kept = [row for row in rows if row.date is None or _cut_order(row) < start]

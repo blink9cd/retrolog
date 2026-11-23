@@ -24,7 +24,7 @@ sys.path.insert(0, str(_TOOL.parent / "retrolog_resolve" / "src"))
 sys.path.insert(0, str(_TOOL / "src"))
 sys.path.insert(0, str(_TESTS / "fixtures"))
 sys.path.insert(0, str(_TOOL))
-import retrolog_export  # noqa: E402 - after the sys.path inserts above
+import export_write  # noqa: E402 - after the sys.path inserts above
 import survey_write  # noqa: E402 - retrolog_export puts its folder on sys.path
 from export_cli_case import (  # noqa: E402 - after the sys.path inserts above
     EXIT_OK,
@@ -79,7 +79,7 @@ class WriteOrderTest(CliCase):
     def _run_failing_after(self, good: int) -> _FailingWrite:
         """Run with a file per film, every write after the first ``good`` failing."""
         failing = _FailingWrite(good)
-        with mock.patch.object(retrolog_export, "write_atomic", side_effect=failing):
+        with mock.patch.object(export_write, "write_atomic", side_effect=failing):
             self.assertEqual(self.main("--rows-per-file", "1"), EXIT_USAGE)
         self.assertIn("could not write the output", self.stderr)
         return failing
@@ -99,7 +99,7 @@ class WriteOrderTest(CliCase):
 
     def test_the_import_files_are_written_before_the_review(self) -> None:
         recording = _FailingWrite(good=10)
-        with mock.patch.object(retrolog_export, "write_atomic", side_effect=recording):
+        with mock.patch.object(export_write, "write_atomic", side_effect=recording):
             self.assertEqual(self.main("--rows-per-file", "1"), EXIT_OK, self.stderr)
         self.assertEqual(
             recording.names, ["letterboxd-001.csv", "letterboxd-002.csv", *_REVIEWS]

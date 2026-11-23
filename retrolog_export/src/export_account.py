@@ -229,7 +229,7 @@ def parse_account_csv(text: str) -> tuple[AccountRow, ...]:
         raise AccountError("not valid CSV") from None
 
 
-def _decoded(name: str, data: bytes) -> str:
+def decoded(name: str, data: bytes) -> str:
     """One file's bytes as text, refused past MEMBER_LIMIT or when not UTF-8."""
     if len(data) > MEMBER_LIMIT:
         raise AccountError(f"{name}: larger than {MEMBER_LIMIT} bytes")
@@ -241,7 +241,7 @@ def _decoded(name: str, data: bytes) -> str:
 
 def _parsed(name: str, data: bytes) -> tuple[AccountRow, ...]:
     """One file's rows; an AccountError from parsing is given the file's name."""
-    text = _decoded(name, data)
+    text = decoded(name, data)
     try:
         return parse_account_csv(text)
     except AccountError as error:
@@ -305,7 +305,7 @@ def _zip_texts(path: Path, names: Sequence[str], option: str) -> dict[str, bytes
     The archive's own bounds are checked before zipfile opens it, and its member count
     again after, since an end record can understate it. The read is capped at
     MEMBER_LIMIT + 1 bytes as well, because a member's header can lie about its size;
-    ``_decoded`` refuses the one byte over.
+    ``decoded`` refuses the one byte over.
     """
     with path.open("rb") as handle:
         _check_archive(handle, option)
@@ -373,7 +373,7 @@ def read_export_texts(path: Path, names: Sequence[str], option: str) -> dict[str
     ``AccountError`` names ``option`` or the file, never a path or a title.
     """
     return {
-        name: _decoded(name, data)
+        name: decoded(name, data)
         for name, data in _account_files(path, names, option).items()
     }
 

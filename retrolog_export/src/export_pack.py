@@ -1,13 +1,14 @@
-"""Pack films' import rows into CSV files under a row cap and a byte cap.
+"""Pack items' import rows into CSV files under a row cap and a byte cap.
 
-Letterboxd's importer takes a file of limited size and row count, so the rows are split
-across numbered files. A film's rows stay together and in order in one file, so
-its logs import oldest first and its newest rating is the one kept. Every file carries
-the header, which counts toward the byte cap; the row cap counts data rows only.
+A service's importer can take a file of limited size and row count (Letterboxd's
+does), so the rows are split across numbered files. An item's rows (a film's, say)
+stay together and in order in one file, so its logs import oldest first and its
+newest rating is the one kept. Every file carries the header, which counts toward the
+byte cap; the row cap counts data rows only.
 
-The rows are plain strings, so this module knows nothing of films beyond "a run of rows
-kept whole", and the caps are the caller's (the CLI's ``--rows-per-file`` and
-``--max-bytes``).
+The rows are plain strings, so this module knows nothing of items beyond "a run of
+rows kept whole", and the caps are the caller's (the CLI's ``--rows-per-file`` and
+``--max-bytes``), as is the noun a refusal names an item by (``film``).
 """
 
 from __future__ import annotations
@@ -22,7 +23,7 @@ _LINE_END = "\n"
 
 
 class PackError(Exception):
-    """One film alone exceeds a cap; the message names it by position, never a cell."""
+    """One item alone exceeds a cap; the message names it by position, never a cell."""
 
 
 def _rows_text(rows: Sequence[Sequence[str]]) -> str:
@@ -51,7 +52,7 @@ def _check_fits(
     max_rows: int,
     max_bytes: int,
 ) -> None:
-    """Refuse a film that cannot fit an empty file (``max_bytes`` counts the header)."""
+    """Refuse an item too large for an empty file (``max_bytes`` counts the header)."""
     if len(film) > max_rows or film_size > max_bytes:
         raise PackError(
             f"{where} has {len(film)} rows and needs {film_size} bytes with the "
@@ -66,12 +67,13 @@ def pack(
     *,
     max_rows: int,
     max_bytes: int,
+    noun: str,
 ) -> tuple[str, ...]:
-    """Each file's CSV text, films packed whole and in order; ``()`` for no films.
+    """Each file's CSV text, items packed whole and in order; ``()`` for no items.
 
-    A new file starts when the next film would take the current one past ``max_rows``
-    data rows or ``max_bytes`` bytes, header included. Raises ``PackError`` when a film
-    cannot fit even an empty file.
+    A new file starts when the next item would take the current one past ``max_rows``
+    data rows or ``max_bytes`` bytes, header included. Raises ``PackError``, naming
+    the item as ``<noun> <n> of <count>``, when one cannot fit even an empty file.
     """
     header_text = _rows_text([header])
     files: list[str] = []
@@ -83,7 +85,7 @@ def pack(
         _check_fits(
             film,
             _size(header_text + text),
-            f"film {index + 1} of {len(films)}",
+            f"{noun} {index + 1} of {len(films)}",
             max_rows=max_rows,
             max_bytes=max_bytes,
         )

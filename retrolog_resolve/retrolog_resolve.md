@@ -122,15 +122,28 @@ sends only what is missing.
 
 ## What is sent, and where
 
-Only the title, the year bound a book search carries, and a film's TMDb id ever
-leave the machine: never a rating, a date, a comment, a file name, or a line.
+Only the title, the year bound a book search carries, a film's TMDb id, and a
+book's Open Library work and author keys ever leave the machine: never a rating, a
+date, a comment, a file name, or a line.
 
 - **Open Library**, for each distinct book title: `search.json` with the title as a
   quoted phrase, `first_publish_year` up to the year the row was read in, and on the
   first two steps English editions with an ISBN (see "How a book is looked up"). No
   key is needed. When `RETROLOG_CONTACT` is set it goes inside the `User-Agent`
   header, in parentheses after the tool's name and version, as Open Library asks of
-  scripts.
+  scripts. For each distinct `ol_work` an override settled a book row by,
+  `/works/<id>.json` with the work key alone, then `/authors/<id>.json` with the
+  author key alone for each author that work names, each distinct author once per run
+  (see "Statuses"). A work listing more than `resolve_books.MAX_WORK_AUTHORS` authors
+  is read as unusable, and none of its authors is asked for. For each work a book was resolved to, and each `ol_work` an
+  override gives with no `isbn13`, the work's edition list,
+  `/works/<id>/editions.json` with the work key and the paging (`limit` and
+  `offset`) alone, a page at a time up to a fixed page cap, so a book usually costs
+  one more request and a work with hundreds of editions a few; each work's list is
+  read once per run (see "How a book's ISBN-13 is picked"). Only those keys travel:
+  never the title, the ISBN-13, or the author's name. A key of any other shape is
+  refused before a URL is built, and the next page's URL is built from its number,
+  never taken from the answer.
 - **TMDb**, for each distinct film title: `/3/search/movie` with the title alone,
   since TMDb has no "released before" filter; the year bound is applied to each
   result's release date on the machine. With `--directors`, also
@@ -147,7 +160,8 @@ review or a CSV. Every request is bounded by `--timeout`, goes over HTTPS only, 
 never carries its headers to another host on a redirect.
 
 Open Library's usage policy asks scripts to go easy on it: the tool sends at most
-three searches per distinct book title (see "How a book is looked up"), waits a second
+three searches per distinct book title (see "How a book is looked up"), and at most
+`resolve_editions.PAGE_CAP` edition-list pages per distinct work, waits a second
 between Open Library requests, and identifies itself in the `User-Agent`, with the operator's
 contact when `RETROLOG_CONTACT` is set. When a service answers HTTP 429 the tool
 waits as long as it asks (at most a minute) and tries once more; a second 429 stops
@@ -236,9 +250,54 @@ Each book title is searched in up to three steps, each asking less of the editio
 
 The chain stops at the first step whose answer holds an exact title with an ISBN; a
 step with no exact title, or with an exact title whose first edition gave no valid
-ISBN, moves on. A title the last step resolves has no ISBN and is listed as `no-isbn`.
-A resolved book records its work key, its authors, and the first edition's first
-ISBN whose check digit is valid (an ISBN-10 is converted to an ISBN-13).
+ISBN, moves on. A resolved book records its work key and its authors, and an ISBN-13
+picked from its work's edition list (see "How a book's ISBN-13 is picked"). When that
+list cannot be read or gives none, it keeps the search's first edition's first ISBN
+whose check digit is valid (an ISBN-10 is converted to an ISBN-13), if any, taken from
+the newest read of that work so its rows share one. A book
+left with no ISBN-13 (a title the last step resolves, unless its edition list, an
+override of the same work, or another row's search gives one) is listed as `no-isbn`.
+
+Only a result with a work key, `/works/OL<digits>W`, is a candidate. Open Library's
+search index also lists some orphan editions as works, under `/works/` but with an
+edition's `M` suffix; those are skipped, since an override, the review page, and
+export all take a work key only.
+
+### How a book's ISBN-13 is picked
+
+One rule picks every book's ISBN-13, a resolved book's and an override book's alike,
+from its work's edition list (`/works/<id>/editions.json`). The pick is made once per
+work per run, and every row resolved to that work in the run, by the search or by an
+override, carries it: a book read more than once must reach export with one ISBN-13,
+or export, which groups a book's reads by ISBN-13, would send it twice. An override
+naming both an `ol_work` and its own `isbn13` keeps it, and that ISBN-13 becomes the
+work's pick for every other row of the work, with no edition-list request; when two
+such overrides of one work disagree, the newest read's wins (an undated read counts
+only when none is dated). An override naming an `isbn13` and no `ol_work` has no work
+key, so it supplies no work's pick. Otherwise the rule below picks:
+
+1. Only an English edition carrying an ISBN whose check digit is valid counts; its
+   first such ISBN-13 is used, else its first valid ISBN-10, converted.
+2. An edition from a known print-on-demand imprint (the pattern
+   `_PRINT_ON_DEMAND` in `src/resolve_editions.py`, matched as words in its
+   publisher names, case ignored) is passed over, unless every edition that counts
+   is one. Goodreads often lacks such an edition's ISBN, so a row sent by it would
+   not match.
+3. Of those left, the latest published in or before the newest read year among all
+   the work's rows in the run, else the earliest after it, else, when no edition is
+   dated, the first listed. When none of the work's rows is dated, the latest
+   published edition is picked. A tie keeps the list's order.
+
+The list is read `resolve_books.EDITIONS_PAGE_SIZE` editions a page, up to
+`resolve_editions.PAGE_CAP` pages; a work with more is picked from those pages. A
+list that cannot be read (a failed request, an answer that is not an edition list,
+or, with `--cache-only`, a page not in the cache; one failed page fails the whole
+list) or that has no edition that counts fails nothing: the work's
+rows take the search's ISBN-13, the one from its newest-read search-resolved row that
+gave one, so they still share one; a work no search resolved, or whose searches gave
+none, keeps none, and export lists it `by-title`. So an override naming a work and no
+`isbn13` can carry another row's ISBN-13: an override's own, the list's pick, or a
+search's.
 
 ## The overrides file
 
@@ -268,7 +327,8 @@ the way search results are: ignoring case, punctuation, and spacing. It applies 
 every row with that title. An entry that also names a source `file` (relative to the
 folder parse read, with `/` separators, as the CSV's `source_file` column spells it)
 and `line` applies to that row only, and beats a title-only entry for it. Each entry
-gives exactly one answer:
+gives one answer: its ids, or `unresolvable`. A film's ids are one `tmdb_id`; a
+book's are an `isbn13`, an `ol_work`, or the two together:
 
 | Key | Medium | Meaning |
 | --- | --- | --- |
@@ -278,7 +338,14 @@ gives exactly one answer:
 | `unresolvable` | either | `true`: the title has no id, and the export sends it by title (and year when known), with no id. |
 
 A title an override settles is not searched; a film override's `tmdb_id` is asked
-only for that film's details, which fill its row's TMDb titles. An unknown key, a
+only for that film's details, which fill its row's TMDb titles, and a book override's
+`ol_work` only for that work and its authors, which fill its row's `creator` (the
+authors' names joined by ` & `, in the work's order) and, when parse left it empty,
+its `year` (the work's first publication year). A book override's `isbn13` is
+always the override's own, and with an `ol_work` it becomes that work's pick; one
+with an `ol_work` and no `isbn13` takes the work's one ISBN-13 for the run (see "How
+a book's ISBN-13 is picked"), which may ask for the work's edition list. One with an
+`isbn13` and no `ol_work` asks nothing. An unknown key, a
 missing one, an id the medium cannot take, two answers, or two entries for the same
 medium, title, file, and line stop the run before anything is looked up, with a message naming the key, never
 its value. An entry that settles no row is an `override-unused` error, so a stale one
@@ -295,7 +362,7 @@ Each row's `resolve_status`:
 | Status | Meaning |
 | --- | --- |
 | `resolved` | Exactly one candidate's title matched and, for a film, nothing held it, or a film's most-voted exact title, single variant match, or single match from the second search was chosen (each of those three with its `most-voted`, `variant`, or `re-searched` review entry). The ids, `creator`, and an empty `year` are filled from it. |
-| `override` | An override settled the row; its ids are the override's (none for `unresolvable`). A film's TMDb titles, and an empty `year`, come from TMDb's details for its `tmdb_id`, one request per distinct id, as a resolved film's come from its candidate. A failed details request (a timeout, an HTTP error, an answer that is not JSON, or, with `--cache-only`, an answer not in the cache), or an answer that names no usable film, fails nothing: the row stays `override` with its id, its TMDb titles stay empty, and so does an empty `year`. |
+| `override` | An override settled the row; its ids are the override's (none for `unresolvable`). A film's TMDb titles, and an empty `year`, come from TMDb's details for its `tmdb_id`, one request per distinct id, as a resolved film's come from its candidate. A book's `creator`, and an empty `year`, come likewise from the Open Library work its `ol_work` names and that work's authors, one request per distinct work and per distinct author, and, when the override names no `isbn13`, its work's one ISBN-13 for the run (see "How a book's ISBN-13 is picked"). A failed details request (a timeout, an HTTP error, an answer that is not JSON, or, with `--cache-only`, an answer not in the cache), or an answer that names no usable film, or no work naming at least one author whose name every author request returned, fails nothing: the row stays `override` with its ids, its TMDb titles stay empty, its `creator` stays as parse wrote it, and so does an empty `year`. |
 | `ambiguous` | Two or more candidates, none with an exact title, or a film's single exact title held as suspect; listed in the review with up to three candidates. |
 | `not-found` | No candidate within the year bounds. |
 | `failed` | A search request failed (a timeout, an HTTP error, an answer that is not JSON, or, with `--cache-only`, an answer not in the cache). Failures are never cached, so a re-run tries again. A failed credits request (`--directors`) fails nothing: it only leaves that film's director blank. Nor does a failed details request for an override's id. |
@@ -415,7 +482,10 @@ tool's marker. `--parsed` itself is only read.
   the year filter beside the original; when its votes do not settle it, or settle it
   on the wrong film, only the operator can tell which was seen, by an override.
 - **One edition per book.** The ISBN recorded is one English edition's, chosen by the
-  read year; it is not necessarily the copy the operator read.
+  newest read year and passing over print-on-demand imprints; it is not necessarily
+  the copy the operator read. Only the known print-on-demand imprints that
+  "How a book's ISBN-13 is picked" points to are recognized; another self-publishing
+  imprint is treated as any other publisher.
 - **Directors help choose, nothing more.** They are looked up only for the films
   `--directors` names, and a resolved film is matched by its TMDb id, not its director.
   So a credits request that fails leaves the director blank and the film's status as
@@ -429,6 +499,14 @@ tool's marker. `--parsed` itself is only read.
   not JSON included, is never cached, so a re-run asks again; an answer that decodes
   as JSON but names no usable film is cached like any other, so only `--refresh`
   asks again.
+- **An override book's author is all or nothing.** Its `creator` is filled only when
+  the work names at least one author and every one of them answers with a name; one
+  failed or nameless author leaves the row's `creator` as parse wrote it, since a
+  partial list would name the wrong authors. An author entry of another shape than
+  the documented `{"author": {"key": "/authors/OL<digits>A"}}` is skipped, and a
+  work that answers as a redirect names no author. A work listing more than
+  `resolve_books.MAX_WORK_AUTHORS` author entries is unusable, as one naming none is,
+  so its row's `creator` also stays as parse wrote it.
 - **A token is needed for any film row** unless `--cache-only` is given, even when
   every film title is settled by an override, whose id is still asked for its
   details.

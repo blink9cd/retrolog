@@ -10,7 +10,7 @@ writes for it, runnable by hand. Nothing here comes from a real list:
 From the tool's folder (the one holding `retrolog_parse.py`):
 
 ```bash
-work="$(mktemp -d)"
+work="$(mktemp -d "${TMPDIR:-/tmp}/retrolog_parse.XXXXXX")"
 python3 samples/build_parse_tree.py --out "$work/tree"
 python3 retrolog_parse.py --path "$work/tree" --rules samples/rules.example.toml --out "$work/out"
 diff -r -x .retrolog_parse "$work/out" samples/expected

@@ -37,6 +37,7 @@ from resolve_fixtures import (  # noqa: E402 - after the sys.path inserts above
     csv_text,
     http_error,
     ol_edition,
+    ol_editions_page,
     ol_payload,
     ol_work,
     override_toml,
@@ -54,10 +55,13 @@ _ISBN = "9780306406157"
 _TOKEN_ENV, _CONTACT_ENV = "RETROLOG_TMDB_TOKEN", "RETROLOG_CONTACT"
 _BOOK_URL = resolve_books.search_url("Moby Dick", 2010, "edition-by-year")
 _FILM_URL = resolve_films.search_url("Metropolis")
+# The resolved book's edition list, empty, so it keeps the search's ISBN-13.
+_EDITIONS_URL = resolve_books.editions_url("/works/OL7W", 0)
 _PAGES: Mapping[str, object] = {
     _BOOK_URL: ol_payload(
         ol_work(key="/works/OL7W", title="Moby Dick", editions=(ol_edition(_ISBN),))
     ),
+    _EDITIONS_URL: ol_editions_page(),
     _FILM_URL: tmdb_search_payload(
         tmdb_result(19, "Metropolis", release_date="1927-01-10", vote_count=2500)
     ),
@@ -206,7 +210,7 @@ class CleanRunTest(_CliCase):
 
         self.fetch = fetch  # type: ignore[assignment] # a RawFetch wrapping Answering
         self.main("--timeout", "2.5")
-        self.assertEqual(seen, [2.5, 2.5])
+        self.assertEqual(seen, [2.5, 2.5, 2.5])
 
     def test_the_parse_folder_is_never_written(self) -> None:
         before = snapshot(self.parsed)
@@ -228,7 +232,8 @@ class CleanRunTest(_CliCase):
         )
         self.assertEqual(self.main("--overrides", overrides), EXIT_OK, self.stderr)
         self.assertIn(",override,,,8,Metropolis,M\n", self.read("film-2010.csv"))
-        self.assertEqual(self.fetch.calls, [_BOOK_URL, details])
+        # Every work's editions are asked once the details are in (one pick per work).
+        self.assertEqual(self.fetch.calls, [_BOOK_URL, details, _EDITIONS_URL])
 
     def test_directors_default_to_ambiguous(self) -> None:
         both = (tmdb_result(1, "Metropolis"), tmdb_result(2, "Metropolis"))
@@ -273,7 +278,7 @@ class CacheTest(_CliCase):
         self.main()
         self.fetch = Answering(_PAGES)
         self.assertEqual(self.main("--refresh"), EXIT_OK, self.stderr)
-        self.assertEqual(sorted(self.fetch.calls), sorted([_BOOK_URL, _FILM_URL]))
+        self.assertEqual(sorted(self.fetch.calls), sorted(_PAGES))
 
     def test_refresh_and_cache_only_are_refused_together(self) -> None:
         with contextlib.redirect_stderr(io.StringIO()):

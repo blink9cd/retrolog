@@ -62,28 +62,37 @@ class CsvTextTest(unittest.TestCase):
 class PackRowsTest(unittest.TestCase):
     def test_no_films_is_no_files(self) -> None:
         self.assertEqual(
-            export_pack.pack(_HEADER, [], max_rows=1_900, max_bytes=1_000_000), ()
+            export_pack.pack(
+                _HEADER, [], noun="film", max_rows=1_900, max_bytes=1_000_000
+            ),
+            (),
         )
 
     def test_exactly_the_row_cap_fills_one_file(self) -> None:
         films = [_film(1)] * 1_900
-        files = export_pack.pack(_HEADER, films, max_rows=1_900, max_bytes=1_000_000)
+        files = export_pack.pack(
+            _HEADER, films, noun="film", max_rows=1_900, max_bytes=1_000_000
+        )
         self.assertEqual(len(files), 1)
         self.assertEqual(len(_data_rows(files[0])), 1_900)
 
     def test_one_row_past_the_cap_starts_a_second_file(self) -> None:
         films = [_film(1)] * 1_901
-        files = export_pack.pack(_HEADER, films, max_rows=1_900, max_bytes=1_000_000)
+        files = export_pack.pack(
+            _HEADER, films, noun="film", max_rows=1_900, max_bytes=1_000_000
+        )
         self.assertEqual([len(_data_rows(text)) for text in files], [1_900, 1])
 
     def test_a_film_that_would_pass_the_row_cap_moves_on_whole(self) -> None:
         files = export_pack.pack(
-            _HEADER, [_film(2), _film(2)], max_rows=3, max_bytes=1_000_000
+            _HEADER, [_film(2), _film(2)], noun="film", max_rows=3, max_bytes=1_000_000
         )
         self.assertEqual([len(_data_rows(text)) for text in files], [2, 2])
 
     def test_every_file_starts_with_the_header(self) -> None:
-        files = export_pack.pack(_HEADER, [_film(1)] * 3, max_rows=1, max_bytes=100)
+        files = export_pack.pack(
+            _HEADER, [_film(1)] * 3, noun="film", max_rows=1, max_bytes=100
+        )
         self.assertEqual(len(files), 3)
         for text in files:
             self.assertTrue(text.startswith("A,B\n"))
@@ -92,38 +101,52 @@ class PackRowsTest(unittest.TestCase):
 class PackBytesTest(unittest.TestCase):
     # "A,B\n" is 4 bytes and each "x,x\n" row 4, so a file of n rows is 4 + 4n bytes.
     def test_exactly_the_byte_cap_fills_one_file(self) -> None:
-        files = export_pack.pack(_HEADER, [_film(3)], max_rows=10, max_bytes=16)
+        files = export_pack.pack(
+            _HEADER, [_film(3)], noun="film", max_rows=10, max_bytes=16
+        )
         self.assertEqual(files, ("A,B\nx,x\nx,x\nx,x\n",))
 
     def test_a_byte_cap_landing_mid_film_moves_the_whole_film_on(self) -> None:
         # The first film ends at 12 bytes; the second's first row would fit (16) but
         # its second would not (20), so the second film opens a new file.
         files = export_pack.pack(
-            _HEADER, [_film(2, "a"), _film(2, "b")], max_rows=10, max_bytes=16
+            _HEADER,
+            [_film(2, "a"), _film(2, "b")],
+            noun="film",
+            max_rows=10,
+            max_bytes=16,
         )
         self.assertEqual(files, ("A,B\na,a\na,a\n", "A,B\nb,b\nb,b\n"))
 
     def test_bytes_are_counted_in_utf8(self) -> None:
         # "é" is one character but two bytes, so each "é,é\n" row is 6 bytes.
         files = export_pack.pack(
-            _HEADER, [_film(1, "é"), _film(1, "é")], max_rows=10, max_bytes=15
+            _HEADER,
+            [_film(1, "é"), _film(1, "é")],
+            noun="film",
+            max_rows=10,
+            max_bytes=15,
         )
         self.assertEqual(len(files), 2)
 
     def test_a_film_too_large_alone_is_refused(self) -> None:
         with self.assertRaises(export_pack.PackError) as caught:
-            export_pack.pack(_HEADER, [_film(1), _film(5)], max_rows=10, max_bytes=16)
+            export_pack.pack(
+                _HEADER, [_film(1), _film(5)], noun="film", max_rows=10, max_bytes=16
+            )
         self.assertIn("film 2 of 2", str(caught.exception))
 
     def test_a_film_with_more_rows_than_the_cap_is_refused(self) -> None:
         with self.assertRaises(export_pack.PackError) as caught:
-            export_pack.pack(_HEADER, [_film(3)], max_rows=2, max_bytes=1_000)
+            export_pack.pack(
+                _HEADER, [_film(3)], noun="film", max_rows=2, max_bytes=1_000
+            )
         self.assertIn("film 1 of 1", str(caught.exception))
 
     def test_the_refusal_quotes_no_cell(self) -> None:
         with self.assertRaises(export_pack.PackError) as caught:
             export_pack.pack(
-                _HEADER, [_film(5, "Metropolis")], max_rows=10, max_bytes=8
+                _HEADER, [_film(5, "Metropolis")], noun="film", max_rows=10, max_bytes=8
             )
         self.assertNotIn("Metropolis", str(caught.exception))
 
@@ -148,7 +171,7 @@ class PackPropertyTest(unittest.TestCase):
         """
         try:
             files = export_pack.pack(
-                _HEADER, films, max_rows=max_rows, max_bytes=max_bytes
+                _HEADER, films, noun="film", max_rows=max_rows, max_bytes=max_bytes
             )
         except export_pack.PackError:
             self.assertTrue(

@@ -62,9 +62,9 @@ _MIN_TESTS_BY_FILE: dict[str, int] = {
     "test_export_select_match.py": 16,
     # The service table, import file names, and review text (export_services,
     # export_output).
-    "test_export_output.py": 15,
+    "test_export_output.py": 19,
     # The command line end to end, and the committed sample.
-    "test_export_cli.py": 34,
+    "test_export_cli.py": 35,
     # What a run leaves in --out: stale files, the write order, and the
     # formula-cell flag.
     "test_export_cli_writes.py": 7,
@@ -76,6 +76,30 @@ _MIN_TESTS_BY_FILE: dict[str, int] = {
     "test_export_cli_modes.py": 19,
     # The tool and its sample builder on a bare interpreter.
     "test_export_stdlib_only.py": 3,
+    # The service seam a book service fills: book input, a stub spec's select, and
+    # the table name and noun the checks, packer, and review take from the caller.
+    "test_export_service_seam.py": 22,
+    # The library export reader: ISBN cells, the read signals, the title and author
+    # keys, every refusal, and a fuzz of library CSVs.
+    "test_export_goodreads_account.py": 35,
+    # A book's fate on the account, the holds a held book passes on, and its key.
+    "test_export_goodreads_match.py": 23,
+    # Goodreads rows and config: one book as one import row, the reread
+    # merge, the [goodreads] table, and the undated-row check.
+    "test_export_goodreads.py": 34,
+    "test_export_goodreads_config.py": 27,
+    # The book review kinds a sent book earns.
+    "test_export_goodreads_review.py": 24,
+    # --service goodreads end to end: sent, on-service, merged, refused, the caps,
+    # and the sample's run against samples/expected-goodreads.
+    "test_export_goodreads_cli.py": 28,
+    # Books removed first: the [goodreads.shelf_tags] table, each shelved book's
+    # shelf, shelved_on, the remove-first entry, and the tag a mapped shelf adds to
+    # Bookshelves.
+    "test_export_goodreads_remove_first.py": 26,
+    # A book whose reads are keyed apart is held as split, never sent twice; reads
+    # sharing one key still merge.
+    "test_export_goodreads_split.py": 10,
 }
 # This module's OWN tests: the guards below, which are the only reason the file exists.
 # Kept apart from the grouped floors rather than summed into one total, so no amount of

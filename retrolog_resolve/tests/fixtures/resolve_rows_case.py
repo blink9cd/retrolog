@@ -18,6 +18,7 @@ from resolve_fixtures import (
     HTTP_TOKEN,
     Answering,
     FakeClock,
+    ol_editions_page,
     ol_payload,
     override_toml,
     tmdb_search_payload,
@@ -39,6 +40,15 @@ _STATUS_COLUMNS = ("resolve_status", "isbn13", "ol_work", "tmdb_id")
 def ol_url(title: str, step: resolve_books.Step, year: int | None = 2010) -> str:
     """The Open Library URL a row read in ``year`` sends at ``step``."""
     return resolve_books.search_url(title, year, step)
+
+
+def no_editions(*works: str) -> dict[str, object]:
+    """An empty first editions page for each of ``works``.
+
+    A resolved book's work is asked for its editions; an empty list keeps the
+    ISBN-13 the search gave, for a test about something else.
+    """
+    return {resolve_books.editions_url(work, 0): ol_editions_page() for work in works}
 
 
 def overrides_of(*entries: str) -> tuple[ResolveOverride, ...]:

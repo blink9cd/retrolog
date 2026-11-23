@@ -5,7 +5,8 @@ Lists kept for years drift between formats: plain text from different machines a
 encodings, Word 97 `.doc` files, newer `.docx` files, and ratings marked by a symbol
 font, a color, a highlight, a small picture, an emoji, or a single letter. These tools
 read such a folder without changing it, turn its lines into dated, rated rows by rules
-you write, match each title to a catalog entry, and write import files for Letterboxd.
+you write, match each title to a catalog entry, and write Letterboxd import files for
+the films or a Goodreads import file for the books.
 
 ## The pipeline
 
@@ -15,7 +16,7 @@ you write, match each title to a catalog entry, and write import files for Lette
 | 2. parse | `retrolog_parse` | the folder, and a rules file you write from the survey | one CSV per medium and year, and a review list of every line it could not read cleanly |
 | 3. resolve | `retrolog_resolve` | parse's CSVs, and an optional overrides file | the same CSVs with a catalog id added to each row (TMDb for films, Open Library for books), and a review list of titles it could not settle alone |
 | 3a. review | `retrolog_review` | resolve's review list | a local web page to pick each unsettled title's match, then an overrides file from those picks for resolve's next run |
-| 4. export | `retrolog_export` | resolve's CSVs, an export config, and a fresh export of your Letterboxd account | numbered Letterboxd import files holding only the films the account does not hold yet, and a review list of what was held back |
+| 4. export | `retrolog_export` | resolve's CSVs, an export config, and a fresh export of your Letterboxd account (films) or your Goodreads library (books) | numbered Letterboxd import files holding only the films the account does not hold yet, or one Goodreads import file holding only the books the library does not hold yet, and a review list of what was held back |
 | 4a. probe | `retrolog_probe` | export's import files | a report of the films Letterboxd lacks, by file and row, to leave out before importing; optional, and the one tool besides resolve that reaches a network service |
 | 4b. restore | `retrolog_restore` | the account export you backed up before deleting your latest diary entries, and one taken after | a Letterboxd import file restoring the deleted entries with their reviews, and `restore.md` listing them and marking the films to like again |
 
@@ -83,7 +84,7 @@ imports them:
 - the review page and its overrides file hold them too, and the page keeps your picks in
   the browser's local storage, readable by any other local file that browser opens, until
   you press **Forget stored picks**;
-- export's import files are your lists in Letterboxd's format;
+- export's import files are your lists in Letterboxd's or Goodreads' format;
 - restore's import file and `restore.md` hold your deleted entries' titles and reviews;
 - probe's report names the films Letterboxd lacks, with their titles. Its cache holds
   only ids and verdicts, but running probe sends each `tmdbID` in the import files to
@@ -104,7 +105,8 @@ previews each file's matches before you confirm: read that preview, and export's
 list, before confirming. Removing an imported film by hand takes three steps (delete
 its diary entry or review, un-mark it as watched, and clear its rating).
 `retrolog_export/retrolog_export.md` describes the import screen's switches and what
-each file holds.
+each file holds. A Goodreads import shows no preview and cannot be undone either; read
+"The Goodreads import" in the same doc before uploading one.
 
 ## Install
 
@@ -144,7 +146,7 @@ cached under resolve's output folder, so a re-run after editing the overrides se
 nothing for a lookup that succeeded. A failed lookup is never cached, so the next run
 tries it again.
 
-Importing the files needs a Letterboxd account that can use its importer, which is
+Importing the film files needs a Letterboxd account that can use its importer, which is
 normally for paid (Pro) members (`retrolog_export/retrolog_export.md`, "The import
 screen"). Check that your account can reach Letterboxd's import page before you start: nothing in the
 steps below tells you whether it can until step 9.
@@ -187,8 +189,10 @@ $WORK/
   overrides.toml    your resolve overrides (step 4)
   export.toml       your export config (step 5)
   account/          Letterboxd account exports, one .zip per download
+  goodreads/        Goodreads library exports, one .csv per download (books only)
   review/           the review page and its overrides files
   survey/  parsed/  resolved/  exported/  restore/   the other tools' outputs
+  resolved-books/  exported-books/   the same for books ("Books on Goodreads")
 ```
 
 The three `.toml` files are yours to write. `rules.toml` and `export.toml` start as
@@ -212,7 +216,7 @@ does rather than one run from start to end. Write everything into a fresh folder
 every git work tree, such as one from `mktemp -d`:
 
 ```bash
-TRY="$(mktemp -d)"
+TRY="$(mktemp -d "${TMPDIR:-/tmp}/media_retrolog.XXXXXX")"
 python -I retrolog_survey/samples/build_sample_tree.py --out "$TRY/survey-lists"
 python -I retrolog_survey/retrolog_survey.py --path "$TRY/survey-lists" --out "$TRY/survey" --no-convert
 python -I retrolog_parse/samples/build_parse_tree.py --out "$TRY/parse-lists"
@@ -287,11 +291,10 @@ something you accept.
 python -I retrolog_resolve/retrolog_resolve.py --parsed "$WORK/parsed" --out "$WORK/resolved" --medium film
 ```
 
-Letterboxd takes films only, so this walkthrough goes on with the films alone. Parse
-writes your books' CSVs too, but they stop there until a book service is supported; to
-add their Open Library ids anyway, run the same command with `--medium book` and an
-`--out` of its own, such as `"$WORK/resolved-books"`, since each run rewrites its
-folder's `review.md` with that run's medium only.
+Letterboxd takes films only, so this walkthrough goes on with the films alone. Your
+books go to Goodreads ("Books on Goodreads" below), resolved by the same command with
+`--medium book` and an `--out` of its own, such as `"$WORK/resolved-books"`, since each
+run rewrites its folder's `review.md` with that run's medium only.
 
 Add `--overrides "$WORK/overrides.toml"` once that file exists. Every successful lookup
 is cached, so running this again sends nothing for a title already found; a failed
@@ -489,6 +492,61 @@ When you add old lines to your lists, run steps 2 to 4 again with the same overr
 file, then steps 6 (optional) to 11 on a fresh account export. Films already imported
 carry your `retrolog` tag, so export skips them, apart from the rows step 11 names;
 only the new ones are sent.
+
+## Books on Goodreads
+
+Your books go to Goodreads through the same tools, with `--medium book` for resolve and
+`--service goodreads` for export. `retrolog_export/retrolog_export.md` ("Goodreads")
+has the detail; these are the steps. Goodreads shows no preview before an import and
+has no undo, so read "The Goodreads import" there before step 6.
+
+1. Match the books, into a folder of their own, and settle the review as in steps 3
+   and 4 above. One overrides file holds both media, since each entry names its own:
+
+   ```bash
+   python -I retrolog_resolve/retrolog_resolve.py --parsed "$WORK/parsed" --out "$WORK/resolved-books" --medium book --overrides "$WORK/overrides.toml"
+   python -I retrolog_review/retrolog_review.py --mode page --review "$WORK/resolved-books/review.json" --out "$WORK/review/review-books.html"
+   ```
+
+   Leave out `--overrides` if the file does not exist yet. Turn each round's picks into
+   overrides with `--mode overrides` as in step 4, reading
+   `"$WORK/resolved-books/review.json"`, and run resolve again.
+2. On Goodreads, export the library (My Books, "Import and export", "Export
+   Library"), and save the `goodreads_library_export.csv` it gives as
+   `$WORK/goodreads/library-1.csv`. Number each later download, and pass the newest to
+   `--account` every time.
+3. Add a `[goodreads]` table to `$WORK/export.toml`: the `shelves` every row goes on,
+   the `ratings` map from your rating marks to stars, the `undated_date_added` an
+   undated book gets, and the optional Private Notes sentences, cutoff, and omit list.
+   "The `[goodreads]` table" in the export doc explains each key, and
+   `retrolog_export/samples/export.example.toml` has an invented one to copy from.
+4. Run export, first as a dry run, then for real:
+
+   ```bash
+   python -I retrolog_export/retrolog_export.py --service goodreads --resolved "$WORK/resolved-books" --account "$WORK/goodreads/library-1.csv" --config "$WORK/export.toml" --out "$WORK/exported-books/round-1" --dry-run
+   python -I retrolog_export/retrolog_export.py --service goodreads --resolved "$WORK/resolved-books" --account "$WORK/goodreads/library-1.csv" --config "$WORK/export.toml" --out "$WORK/exported-books/round-1"
+   ```
+
+5. Read `$WORK/exported-books/round-1/review.md` ("Goodreads review kinds" in the
+   export doc). Exit `1` means a book is held back: settle a `held-ambiguous` book
+   with an override and a `held-failed` one by running resolve again (step 1), then
+   run export again into a new `--out` folder, until it exits `0` or holds only
+   `held-no-title` books. Such a book has no letter or digit in its title, so no tool
+   can match it: add it on Goodreads by hand.
+6. On Goodreads, remove every book `review.md` lists as `remove-first` from all its
+   shelves ("Books already on a shelf" in the export doc says how).
+7. On Goodreads' import page ("Import and export", "Import"), upload
+   `goodreads-001.csv`, the whole file in one go: every rated book posts an update to
+   your followers, so one upload makes it one burst.
+8. Download a new library export and run step 4 again into a new `--out` folder. It
+   should write no import file: every imported book now reads as `on-service`, and
+   every book on your omit list as `omitted`. A book still sent is one the import did
+   not land as read, most often a `by-title` or `title-only` book Goodreads matched to
+   another edition or another work, or did not find: look it up on Goodreads before
+   importing anything.
+
+To take back a book an import got wrong, follow "Undoing a book's read by hand" in the
+export doc: clearing its date alone leaves it counted as read.
 
 ## Running the tests
 

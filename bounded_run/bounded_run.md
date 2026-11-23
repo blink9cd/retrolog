@@ -3,9 +3,11 @@
 Shared library for running a child process with a timeout that survives the child spawning
 children of its own. Imported by the tools beside it; it has no CLI.
 
-The bound is on time, and only on time: it is measured on `time.monotonic()`, or on `clock=`
-when given. Nothing bounds the size of the output. Everything the child writes to stdout and
-stderr is read into this process's memory, and no option caps it. It is handed back whole in the
+The bound is on time: it is measured on `time.monotonic()`, or on `clock=` when given. With
+`memory_limit=` the child's process tree is bounded in memory as well (*Memory bound* below),
+but that bounds the child, not this process. Nothing bounds the size of the output. Everything
+the child writes to stdout and stderr is read into this process's memory, and no option caps it.
+It is handed back whole in the
 `CompletedProcess`, or in the `TimeoutExpired` an expiry raises; only a failed tree kill drops it
 (property 3), and by then it has already been held. A child that writes a gigabyte well inside its
 time costs this process more than a gigabyte, and nothing here stops it. *Measured behavior* below
@@ -43,7 +45,7 @@ the folder the bootstrap names too, so keep the two libraries side by side.
 
 ## API
 
-### `run_bounded(argv, *, timeout, cwd=None, env=None, stdin_text=None, kill_tree_fn=kill_tree, clock=None, hide_window=False, inherit_stderr=False)`
+### `run_bounded(argv, *, timeout, cwd=None, env=None, stdin_text=None, kill_tree_fn=kill_tree, clock=None, hide_window=False, inherit_stderr=False, memory_limit=None, tree_observer=None)`
 
 Runs `argv` capturing text output; returns `subprocess.CompletedProcess[str]`. `argv` is a
 sequence of arguments: a `str` or `bytes` raises `TypeError` before anything is spawned, because
@@ -62,6 +64,12 @@ block where an EOF does not.
 
 `clock`, when given, measures `timeout` on that clock instead of `time.monotonic()`. See
 *Measuring the bound on a clock that counts sleep* below.
+
+`memory_limit`, in bytes, also bounds the memory of the child's whole process tree: past it the
+tree is killed and `MemoryLimitExceeded` is raised; should the tree become unreadable, it is
+killed too and `MemoryWatchFailed` is raised. `tree_observer`, a `TreeObserver`, is filled in
+with how many processes that watchdog saw in the tree, so it needs `memory_limit`. See *Memory
+bound* below.
 
 `hide_window=True` starts the child with no console window on Windows (`CREATE_NO_WINDOW`, added
 to the `CREATE_SUSPENDED` every child gets there), and is ignored elsewhere. It exists for a
@@ -83,13 +91,59 @@ pass it only for a child whose output you trust. And a parent with no stderr of 
 such as one run by `pythonw.exe`, has none to hand on, so the child's writes there go
 nowhere.
 
-### `run_bounded_bytes(argv, *, timeout, cwd=None, env=None, stdin_bytes=None, kill_tree_fn=kill_tree, clock=None, hide_window=False)`
+### `run_bounded_bytes(argv, *, timeout, cwd=None, env=None, stdin_bytes=None, kill_tree_fn=kill_tree, clock=None, hide_window=False, memory_limit=None, tree_observer=None)`
 
 Binary-mode sibling; returns `subprocess.CompletedProcess[bytes]`. Pass `stdin_bytes` to feed the
-child's stdin; without it the child gets `DEVNULL`, as above, and `argv`, `clock` and
-`hide_window` mean what they do there.
+child's stdin; without it the child gets `DEVNULL`, as above, and `argv`, `clock`,
+`hide_window`, `memory_limit` and `tree_observer` mean what they do there.
 Kept a separate named function rather than a `text=` switch so each has one reason to exist and
 mypy needs no `@overload`.
+
+### `stream_bounded(argv, *, timeout, cwd=None, env=None, kill_tree_fn=kill_tree, hide_window=False, memory_limit=None, tree_observer=None)`
+
+Returns a `BoundedStream` over `argv`'s stdout, as bytes, for a `with` statement. It exists for
+a child whose output is too large to hold until it ends, a decoder writing raw frames for one:
+the caller reads stdout as it comes, while the child's whole tree stays under the same
+`timeout` and `memory_limit` as `run_bounded`'s, killed by the same `kill_tree_fn`.
+
+```python
+with bounded_run.stream_bounded(argv, timeout=600, memory_limit=2 << 30) as stream:
+    while frame := stream.read(frame_bytes):
+        consume(frame)
+if stream.returncode != 0:
+    report(stream.stderr)
+```
+
+- **Validated at the call, spawned at the `with`.** Every refusal `run_bounded` makes is made
+  when `stream_bounded` is called, before anything starts: a `str` argv, a `memory_limit` that
+  is not a positive `int`, a `tree_observer` without one, and any `memory_limit` on Windows,
+  with the same `ValueError`. Nothing is spawned until the stream is entered, and a stream is
+  entered once.
+- **Reading.** `stream.read(size)` blocks until `size` bytes or the end, and fewer than `size`
+  means the end. stdin is `DEVNULL`, for the reason `run_bounded`'s is. stderr is drained by a
+  thread as the child writes it, so a child writing a lot there never blocks, and only its last
+  `boundedrun_stream.STDERR_TAIL_BYTES` are kept, as `stream.stderr`.
+- **The bound, while the caller reads.** A pipe read takes no timeout, so a deadline thread
+  kills the tree when `timeout` passes, on `time.monotonic()` (there is no `clock=`), and the
+  memory watchdog kills it on a breach. Either kill ends the read with the end of the stream.
+- **How it ends.** Leaving the `with` after reading to the end waits, in what is left of
+  `timeout`, for the child's exit and for its stderr to close, as `run_bounded` waits for
+  both pipes: a descendant the child left behind holding stderr keeps the stream running,
+  and past the deadline the tree is killed and the run times out. Leaving it any other way,
+  stopping early or raising, kills the tree at once, a descendant whose leader already
+  exited included. Either way the leader is reaped (within `KILL_GRACE_SECONDS`), the
+  watchdog and drain are stopped, and the pid and job are released before the statement
+  ends; then `returncode` holds the exit status. An interrupt that lands while the ending
+  waits kills the tree, reaps the leader and releases it before it propagates (property 7).
+- **What it raises.** Only after a body that raised nothing: `MemoryLimitExceeded` or
+  `MemoryWatchFailed` for the memory bound, else `subprocess.TimeoutExpired` (carrying the
+  stderr tail) for a run past its deadline, or for one whose kill left it unreaped, when
+  `returncode` is `None`. A nonzero exit is not raised: read `returncode`. A caller's own
+  exception always wins over the outcome. A deadline kill that itself raised is that
+  `TimeoutExpired`'s cause, after the child alone was killed in its place.
+
+On Windows, without `memory_limit`, the child joins a job before it runs, as every other entry
+point's does, so the deadline kill reaches its whole tree there too.
 
 ### `sleep_inclusive_clock()`
 
@@ -114,9 +168,9 @@ out a real timeout.
 
 ### `kill_live_trees()`
 
-Kills the tree of every child a `run_bounded` or `run_bounded_bytes` call has started and not
-yet finished, through `kill_tree`, and returns how many kills completed. It is for a caller's
-own signal handler: property 8 says why such a caller needs it. A kill that raises `OSError`,
+Kills the tree of every child a `run_bounded`, `run_bounded_bytes` or `stream_bounded` call has
+started and not yet finished, through `kill_tree`, and returns how many kills completed. It is
+for a caller's own signal handler: property 8 says why such a caller needs it. A kill that raises `OSError`,
 or the `ValueError` of a root the tree kill refuses with nothing sent, is skipped and not
 counted, so one tree that cannot be killed does not spare the rest. With nothing running it
 kills nothing and returns 0. The registry behind it is `src/boundedrun_live.py`.
@@ -321,6 +375,124 @@ waiting and spawning, while the Windows half is part of the spawning. Only its t
 the Win32 headers lives apart, in `src/boundedrun_kernel32.py`: the structure layouts and the
 kernel32 function table, which have no behavior of their own. `bounded_run` re-exports them.
 
+## Memory bound
+
+`memory_limit=` (bytes, default `None`) bounds the memory of the child and every descendant
+reachable from it, summed. Past the limit the tree is killed with the same `kill_tree_fn` the
+timeout uses, and the call raises `MemoryLimitExceeded`: a `subprocess.SubprocessError` carrying
+`cmd` (the argv), `limit`, `peak` (the largest sum observed, in bytes) and whatever output was
+captured before the kill, as `output`/`stdout` and `stderr`, the way `TimeoutExpired` carries
+it. A breach never comes back as an ordinary `CompletedProcess` with a signal return code: a
+caller that classifies a signal exit as a crash would otherwise misread its own bound. A breach
+whose kill failed, so that the timeout fired afterward, still raises `MemoryLimitExceeded`, with
+the kill's error as its cause. With `None`, no watchdog starts and the run is exactly as before.
+
+**It fails closed.** A read of the tree that raises (a reader error, not a process that went
+away, which reads as 0) kills the tree at once, as a breach would, and the call raises
+`MemoryWatchFailed`: also a `subprocess.SubprocessError`, a sibling of `MemoryLimitExceeded`
+rather than a kind of it, since no breach was observed. Its cause is the read error, and it
+carries `cmd`, `limit`, the captured `output`/`stdout` and `stderr`, and `kill_error` (the
+kill's own error, when that kill raised too; the timeout then fires and its partial output is
+carried). A watchdog that could not read would otherwise let the child run on with no bound at
+all until the drain ended, the outcome the caller asked the bound to prevent. Should the
+watchdog thread fail to start, the child is killed and reaped before that error propagates,
+since nothing else would end it. And no kill begins once the run's end has stopped the watchdog,
+nor once the child has been reaped: by then its pid may be reused.
+
+"Went away" is narrow, so the bound cannot fail open by misreading a denial as an exit. On
+macOS only `ESRCH` means gone; every libproc call clears `errno` first and reads it after,
+and any other failure (`EPERM` above all) raises. On Linux a process is gone only once its
+`/proc/<pid>` folder is: a `statm`, `stat` or thread `children` file that cannot be read while
+its process (or thread) is still listed raises. The run's own child is held to more: it is gone
+only once the run has reaped it, so a reader that cannot see its folder while it is unreaped (a
+`/proc` that does not hold it, such as an empty directory or another pid namespace's mount,
+where every read would look like an exit and the walk would sum 0 bytes) fails the watch, after
+polling for about a second, on the monotonic clock rather than a count of polls a throttled host
+stretches, for the reap `subprocess` may be recording at that moment
+(`src/boundedrun_rootwatch.py`). A zombie child is not a failure: Linux keeps its folder until
+the reap. macOS is not checked this way, since `ESRCH` there is the kernel's own answer, and a
+zombie child returns it too. Measured with the parent under `sandbox-exec` and
+`(deny process-info*)`: every libproc call fails with `EPERM`, and a reader that took that for
+"gone" let a 200 MiB child finish under a 50 MiB bound with exit 0. That run raises
+`MemoryWatchFailed` (`tests/test_memory_fail_closed.py` runs it live on macOS when
+`sandbox-exec` exists). The cost is that a descendant the reader may not inspect, one running
+under another uid (a setuid helper, say), fails the watch as well rather than being silently
+left out of the sum.
+
+**What the watchdog saw of the tree.** Pass a `TreeObserver()` as `tree_observer=` and, after
+the run (returned or raised), its `max_processes` is the most processes one poll found in the
+tree, the child included: 1 for a child that ran alone, more once a descendant was seen, 0
+only if no poll ran. It exists for a caller that trusts a clean exit and must know whether some
+descendant ran whose own end it never saw (a stress harness, say). A descendant that started and
+ended between two polls is never seen, so a count of 1 is evidence, not proof. Measured on
+macOS at the 20 ms poll, 80 runs each: a forked child that exits at once was seen in 3 runs
+at one job and 13 at eight concurrent jobs, one that lives 20 ms in 72, and one that lives
+40 ms or more in all 80. A descendant living under about 20 ms is usually missed, so the count
+protects a campaign of many runs (one run that sees a descendant is enough), not each run. It
+needs `memory_limit=`, the only thing that walks the tree; given alone it raises `ValueError`
+before spawning, rather than report 0 as though nothing had run.
+
+The value must be a positive `int`; anything else (`0`, a negative, a `float`, a `bool`) raises
+`ValueError` before anything is spawned.
+
+| Platform | Mechanism | Footprint read |
+| --- | --- | --- |
+| macOS | A watchdog thread polls the tree | `phys_footprint` from `libproc`'s `proc_pid_rusage`, through `ctypes`, which includes compressed memory; children from `proc_listchildpids`; each process's group from `proc_pidinfo`'s BSD short info, and a group's members from `proc_listpids` |
+| Linux | The same watchdog | The resident set, `/proc/<pid>/statm`'s second field times the page size; children from each thread's `/proc/<pid>/task/*/children`, or a scan of every `/proc/*/stat` where the kernel lacks that file; each process's group from its `stat`'s fifth field, and a group's members from a scan of every `/proc/*/stat` |
+| Windows | Refused: `ValueError` before spawning | None yet: it needs a job-object memory cap, which is not built |
+| Anything else | Refused: `ValueError` before spawning | No reader |
+
+**Why a watchdog, not a resource limit.** On macOS 27.2, `setrlimit` refuses any lowered
+`RLIMIT_DATA` or `RLIMIT_AS` with `EINVAL` (256 MiB, 8 GiB and 64 GiB tried, from Python and
+from C), so the kernel offers no bound to set. Linux honors `RLIMIT_AS`, but a breach there
+makes `malloc` return NULL, and a tool that then exits cleanly non-zero is indistinguishable
+from one that rejected its input. A parent-side watchdog that kills and raises gives one
+unmistakable outcome on both.
+
+**The poll, and what it cannot promise.** The watchdog starts once the child is registered and
+contained, reads the tree at once and then every `POLL_SECONDS` (in
+`src/boundedrun_memory.py`), and stops when the drain ends. Between two reads a child can
+allocate freely, so the overshoot past the limit is about its allocation rate times the
+interval, plus the kill's latency. Measured on macOS: polling every 10 ms killed a child capped
+at 512 MiB at 535 MiB, and at a 20 ms poll the suite's allocator (64 MiB chunks, 20 ms
+apart) capped at 256 MiB was killed at 267 or 268 MiB, about 0.3 s in. Each read walks the
+same tree the POSIX kill reaches (property 6): every descendant through parent links, and every
+member of every process group one of them is in, so a descendant whose own parent already
+exited, re-parented to init or launchd, is still counted while it stays in its group, and
+killed with it. Group ids below 2 are never followed. A process that exits mid-read counts as
+0; one the reader may not read fails the watch (above). On Linux each group the tree
+reaches costs a scan of every `/proc/*/stat` per poll, there being no per-group index.
+
+**One read is bounded too.** The walk adds each footprint to a running total and stops as soon
+as that total is over the limit, so a breach is caught without reading the rest of the tree;
+the run's `peak` is then the sum when the walk stopped. A walk that reads more than
+`MAX_WALK_PROCESSES` processes, or runs longer than `MAX_WALK_SECONDS` on the monotonic clock
+(both in `src/boundedrun_memread.py`), raises `TreeWalkOverCap`, an `OSError`, and fails the
+watch: a child forking faster than the walk could otherwise keep one read from ever ending, and
+with it the comparison to the limit. Such a run raises `MemoryWatchFailed`, its tree killed.
+
+**The two readers do not measure the same thing.** macOS's `phys_footprint` is what Activity
+Monitor calls Memory: private memory, compressed pages included. Linux's resident set counts
+shared file-backed pages (mapped libraries, a mapped file) once for every process mapping them,
+so a tree of many processes over-counts what it costs, and it excludes swapped-out pages, so a
+tree under memory pressure under-counts. A limit tuned on one platform may trip earlier or later
+on the other.
+
+`tests/test_memory_limit.py` proves it live on macOS (the Linux reader is pinned only against a
+directory laid out like `/proc`, not yet run against a real kernel): a real allocator past its
+bound raises with `peak > limit` long before the timeout, through both entry points, and is gone
+afterward; one well under its bound completes; two siblings that each stay under the bound but
+together exceed it trip it and are both gone afterward; a grandchild orphaned in the child's
+group is counted and killed; and a watchdog that cannot start leaves the child killed and
+reaped. `tests/test_memory_readers.py` pins the tree sum, both readers (the
+`libproc` one through C function pointers built from its own signature table, the `/proc` one
+over a directory laid out like `/proc`, so both run on every host); `tests/test_memory_watchdog.py`
+pins the watchdog's outcomes and the watched drain's; `tests/test_memory_fail_closed.py` pins
+gone against unreadable on both readers, through `run_bounded`, and live under `sandbox-exec`;
+`tests/test_tree_observer.py` pins the process count and the no-kill-once-reaped check;
+`tests/test_root_unreadable.py` pins an unseen, unreaped child as a failed watch, a zombie child
+as none, and the reap race's grace.
+
 ## Measuring the bound on a clock that counts sleep
 
 `Popen.communicate(timeout=...)` measures on `time.monotonic()`. On macOS that clock stops while
@@ -354,7 +526,12 @@ after it (property 8), live in `src/boundedrun_spawn.py`, a fourth. Each was spl
 `bounded_run.py` to a reviewable length. `bounded_run.py` keeps the spawn's flags, Windows job
 containment, and `kill_tree`, which picks between them. `tests/test_live_registry.py` pins the
 registry's bookkeeping with fakes, and kills a real child and grandchild mid-run, probing that
-both are gone.
+both are gone. The memory watchdog (*Memory bound*) lives in `src/boundedrun_memory.py`, and the
+tree walk and its two platform readers in `src/boundedrun_memread.py`, and the check that the
+reader can see the unreaped child at all in `src/boundedrun_rootwatch.py`. The order a
+capturing run's drain follows (contain, wait under the bounds, release) lives in
+`src/boundedrun_contained.py`, with the containment passed in from `bounded_run.py`, and the
+streaming entry point's child, its deadline thread and its ending in `src/boundedrun_stream.py`.
 
 ## Proving the POSIX branch
 

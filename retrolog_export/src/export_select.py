@@ -1,34 +1,29 @@
-"""Choose the films to send: the cutoff, the holds, the account diff, and the order.
+"""Choose the items to send: the cutoff, the holds, the account diff, and the order.
 
 ``select`` takes every row export_input read and decides each one's fate, in this
 order: rows at or after the operator's cutoff are cut and counted; the rest are
-grouped into films; a film one of whose rows, cut or kept, the config's omit list
-names is left out and listed, before it can hold anything back; a film with an
-``ambiguous`` or ``failed`` row is held whole, and so is a film whose title and year
-would hide a held one on the next run's diff, or, with watched dates on, whose title
-and a row's date would (by the tagged-date rule), which passes the hold on in turn;
-then a film with no title the account could know it by is held, and so is each film
-of a title whose rows split between a tmdbID film and a title-only film, passing the
-hold on the same way; then each film's fate follows from the account files that list it: one an
-earlier import tagged is skipped whole, and so is one with such a tagged diary entry
-on the date of one of its rows, in any year; one the owner logged (a diary entry, a
-rating, or a review) is sent without stars, less any row on the date of one of its
-diary entries; one only marked watched, and one the account lacks, are sent in
-full. The logged, watched, and same-date checks also accept an entry of the film's
-title a year either side of a row's (``export_match``). Every input row is cut,
-omitted, held, skipped, dropped, or sent exactly once.
+grouped into items (films, or books) by the service's ``item_key``; an item one of
+whose rows, cut or kept, the config's omit list names is left out and listed, before
+it can hold anything back; an item with an ``ambiguous`` or ``failed`` row is held
+whole, and the service's ``grow_holds`` passes each hold on to the items that would
+hide a held one on the next run's diff; then an item with no title the account could
+know it by is held, and so is each item the service's ``split_holds`` finds split
+from another item that is the same film or book (``film_splits`` here for a film,
+``export_goodreads_account.book_splits`` for a book), the holds grown again the same
+way; then each free item's fate on the account is the service's ``account_fate``. Every input
+row is cut, omitted, held, skipped, dropped, or sent exactly once.
 
-A film is matched against the account, and against the held films and a split title,
+Letterboxd's account classes and hold growth are ``export_letterboxd_select``'s. A
+film is matched against the account, and against the held films and a split title,
 by each row's list title and each TMDb title resolve recorded for it, always with
 the row's year: resolve can settle a film under a title other than the list's. Each
 title counts by its ``title_key`` and by its folded and hyphen keys
 (``export_titles``), so an accent, an "&" against "and", or a hyphen against a
 space alone does not make two titles differ.
 
-The account check is a parameter, ``on_service``, so this module never reads an
-account export, and the cutoff is ``export_cutoff``'s. Every review entry's detail is
-path-free and names no title: the entry's own ``title`` and ``rows`` fields carry
-those.
+The account check is the spec's, so this module never reads an account export, and
+the cutoff is ``export_cutoff``'s. Every review entry's detail is path-free and names
+no title: the entry's own ``title`` and ``rows`` fields carry those.
 """
 
 from __future__ import annotations
@@ -36,26 +31,23 @@ from __future__ import annotations
 import datetime
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from export_cutoff import apply_cutoff
-from export_match import (
-    ON_SERVICE,
-    Match,
-    account_match,
-    hides_by_tagged_date,
-    imported_detail,
-    near_detail,
-    same_date_rows,
-)
+from export_match import ON_SERVICE
 from export_titles import match_keys
 from export_types import (
-    Account,
     Cutoff,
     FilmKey,
+    Medium,
     OmitEntry,
     ResolvedRow,
     ReviewEntry,
 )
+
+if TYPE_CHECKING:
+    # Annotations only: export_services imports this module to build its table.
+    from export_services import ServiceSpec
 
 # Every kind of review entry, the errors first.
 REVIEW_KINDS = (
@@ -69,15 +61,35 @@ REVIEW_KINDS = (
     "logged-no-stars",
     "watched-only",
     "override-unchecked",
+    # Book-only (BOOK_KINDS), but placed ahead of by-title: in a book run it follows
+    # on-service, since the operator acts on it before the import.
+    "remove-first",
     "by-title",
+    # The book-only kinds: BOOK_KINDS.
+    "title-only",
+    "author-missing",
+    "reread-merged",
     "unrated",
     "undated",
     "formula-cell",
+)
+# The kinds only a book earns, export_goodreads.book_entries': a film run's review
+# counts leave them out, so a film run's review.json names no book kind.
+BOOK_KINDS = frozenset(
+    {"remove-first", "title-only", "author-missing", "reread-merged"}
+)
+# The kinds only a film earns: the account classes are export_letterboxd_select's,
+# and override-unchecked is sent_entries'. A book's holds grow only from the kinds a
+# book is held under, so none reaches it.
+FILM_KINDS = frozenset(
+    {"same-date", "logged-no-stars", "watched-only", "override-unchecked"}
 )
 # The kinds that make the run's exit code 1: the rest of the films are still sent.
 ERROR_KINDS = frozenset(
     {"held-ambiguous", "held-failed", "held-split", "held-no-title"}
 )
+# The unrated detail, the same for a film and a book: export_goodreads reuses it.
+UNRATED_DETAIL = "sent with no rating; rate it by hand"
 # The resolve statuses that hold a film back, and the review kind each gives.
 _HELD_KINDS = {"ambiguous": "held-ambiguous", "failed": "held-failed"}
 _DETAILS = {
@@ -86,8 +98,6 @@ _DETAILS = {
     "held-no-title": "its title has no letter or digit, so the account cannot be "
     "checked for it; add it by hand",
     "on-service": ON_SERVICE,
-    "omitted": "named in letterboxd.omit, so not sent; remove the entry to consider it "
-    "again",
     "same-date": "a diary entry on the account has this date; Letterboxd would update "
     "it rather than add one, so this row is not sent",
     "logged-no-stars": "already logged on the account, so sent without stars to keep "
@@ -97,7 +107,7 @@ _DETAILS = {
     "override-unchecked": "sent by an override's tmdbID, with no TMDb title to check "
     "the account by; confirm by hand it is not already there",
     "by-title": "sent by title with no tmdbID; check it in the import preview",
-    "unrated": "sent with no rating; rate it by hand",
+    "unrated": UNRATED_DETAIL,
     "undated": "sent with no watched date",
 }
 # The override-unchecked detail when no unchecked row is an override: resolve never
@@ -114,9 +124,8 @@ _SPLIT_DETAILS = {
     False: "other rows of this title have a tmdbID; settle these in resolve with an "
     "override, then rerun",
 }
-# A film sent now would put a held film's title on the account, and the next run would
-# then skip the held one as on-service: so it waits too, under that film's kind.
-_HELD_WITH_ANOTHER = "held with another film of this title until resolve settles it"
+# The omitted detail, naming the service's table: "letterboxd" fills it in.
+_OMITTED = "named in {}.omit, so not sent; remove the entry to consider it again"
 # A held film's review kind, and its detail when not the kind's own.
 Hold = tuple[str, str | None]
 # A sort key: undated rows first, then date, source file, and line.
@@ -124,14 +133,27 @@ RowOrder = tuple[bool, datetime.date, str, int]
 
 
 @dataclass(frozen=True)
-class Film:
-    """One film to send, and every one of its rows."""
+class Item:
+    """One item to send, a film or a book, and every one of its rows."""
 
-    key: str  # "tmdb:<id>" or "title:<title_key>:<year or ''>"
+    # The service's item_key: a film's "tmdb:<id>" or "title:<title_key>:<year or ''>"
+    key: str
     rows: tuple[ResolvedRow, ...]  # upload order: see row_order
-    # True for a film the owner logged on the account: its rows go with no stars, so
+    # True for an item the owner logged on the account: its rows go with no stars, so
     # the import keeps the rating the account gave it.
     withhold_rating: bool = False
+    # The rows merged into this item's one row and not sent themselves: a book read
+    # more than once goes as its newest read, and these are the earlier ones, whose
+    # years its row names. Empty for a film, and for a book read once.
+    merged: tuple[ResolvedRow, ...] = ()
+    # A book sent although the account has it on a shelf other than read: that
+    # shelf's name, or "" when the name cannot be shown. None for a book the account
+    # lacks, and always for a film.
+    account_shelf: str | None = None
+
+
+# The film service's word for an item, which its code and tests use.
+Film = Item
 
 
 @dataclass(frozen=True)
@@ -143,6 +165,15 @@ class Selection:
     # its first row later keeps its place here, though not in ``films``.
     review: tuple[ReviewEntry, ...]
     cut: int  # rows the cutoff left out
+
+
+def review_kinds(medium: Medium) -> tuple[str, ...]:
+    """The review kinds a run of ``medium`` can earn, in ``REVIEW_KINDS`` order.
+
+    A film run leaves out ``BOOK_KINDS`` and a book run ``FILM_KINDS``.
+    """
+    other = BOOK_KINDS if medium == "film" else FILM_KINDS
+    return tuple(kind for kind in REVIEW_KINDS if kind not in other)
 
 
 def row_order(row: ResolvedRow) -> RowOrder:
@@ -163,11 +194,13 @@ def film_key(row: ResolvedRow) -> str:
     return f"title:{row.title_key}:{year}"
 
 
-def group_films(rows: Iterable[ResolvedRow]) -> tuple[Film, ...]:
-    """The rows as films, each film's rows and the films in upload order."""
+def group_films(
+    rows: Iterable[ResolvedRow], item_key: Callable[[ResolvedRow], str]
+) -> tuple[Film, ...]:
+    """The rows grouped by ``item_key``, rows and items in upload order."""
     grouped: dict[str, list[ResolvedRow]] = {}
     for row in rows:
-        grouped.setdefault(film_key(row), []).append(row)
+        grouped.setdefault(item_key(row), []).append(row)
     films = [
         Film(key, tuple(sorted(members, key=row_order)))
         for key, members in grouped.items()
@@ -244,7 +277,7 @@ def _title_keys(row: ResolvedRow) -> tuple[str, ...]:
     return tuple(dict.fromkeys(key for key in keys if key))
 
 
-def _row_keys(film: Film) -> list[FilmKey]:
+def row_keys(film: Film) -> list[FilmKey]:
     """Every ``FilmKey`` an account could know a film's rows by, each once.
 
     Each row's ``_title_keys``, with the row's year.
@@ -253,142 +286,8 @@ def _row_keys(film: Film) -> list[FilmKey]:
     return list(dict.fromkeys(keys))
 
 
-def _held_keys(
-    films: Iterable[Film], holds: Mapping[str, Hold]
-) -> list[tuple[FilmKey, str]]:
-    """Every held film's row keys, each with its film's hold kind, in film order."""
-    return [
-        (key, holds[film.key][0])
-        for film in films
-        if film.key in holds
-        for key in _row_keys(film)
-    ]
-
-
-def _shared_hold(
-    film: Film,
-    held: Sequence[tuple[FilmKey, str]],
-    on_service: Callable[[FilmKey, frozenset[FilmKey]], bool],
-) -> str | None:
-    """The hold of the first held film that sending ``film`` would hide, if any.
-
-    Once ``film`` is sent, the next run's diff finds a held film of the same title on
-    the account whenever ``on_service(held key, {this film's key})`` is true, and
-    skips it for good. So ``film`` waits with it, by that same test.
-    """
-    for key in _row_keys(film):
-        for held_key, hold in held:
-            if on_service(held_key, frozenset({key})):
-                return hold
-    return None
-
-
-def _date_hold(film: Film, held: Iterable[tuple[Film, str]]) -> str | None:
-    """The hold of the first held film ``film``'s tagged diary entries would hide.
-
-    Asked only with dates on: ``export_match.hides_by_tagged_date``.
-    """
-    sent = (film.rows, _row_keys(film))
-    for other, hold in held:
-        if hides_by_tagged_date(sent, (other.rows, _row_keys(other))):
-            return hold
-    return None
-
-
-@dataclass(frozen=True)
-class _AccountCheck:
-    """What decides a film's account class: the account, its match, the dates switch."""
-
-    account: Account
-    on_service: Callable[[FilmKey, frozenset[FilmKey]], bool]
-    watched_dates: bool  # whether rows go with a WatchedDate, which a diary entry meets
-
-
-# A film's fate on the account: the film to send, if any, and its review entries.
-Fate = tuple[Film | None, list[ReviewEntry]]
-
-
-def _logged_fate(film: Film, check: _AccountCheck, match: Match) -> Fate:
-    """A film the owner logged: its rows without stars, less the same-date rows.
-
-    ``match`` is how the film met the logged files, for the entry's detail. A row
-    goes with no WatchedDate when ``watched_dates`` is off, and then meets no entry.
-    """
-    dropped: tuple[ResolvedRow, ...] = ()
-    dropped_match: Match | None = None
-    if check.watched_dates:
-        dropped, dropped_match = same_date_rows(
-            film.rows, _row_keys(film), check.account.diary_dates, check.on_service
-        )
-    review: list[ReviewEntry] = []
-    if dropped:
-        detail = near_detail("same-date", dropped_match)
-        review.append(review_entry(Film(film.key, dropped), "same-date", detail))
-    kept = tuple(row for row in film.rows if row not in dropped)
-    if not kept:
-        return None, review
-    sent = Film(film.key, kept, withhold_rating=True)
-    detail = near_detail("logged-no-stars", match)
-    return sent, [
-        *review,
-        review_entry(sent, "logged-no-stars", detail),
-        *sent_entries(sent),
-    ]
-
-
-def _account_fate(film: Film, check: _AccountCheck) -> Fate:
-    """What the account files that list ``film`` make of it.
-
-    Asked in this order, imported first: a film an earlier import sent is skipped
-    whole (``export_match.imported_detail``), one the owner logged is
-    ``_logged_fate``'s, one only watched is sent in full and listed, and one the
-    account lacks is sent as it is. The logged and watched checks accept a year one
-    either side of a row's: a logged film missed by a year would go with stars and
-    overwrite the owner's own rating, while a false match only sends it starless, so
-    the looser match is the safe one. A logged match, even a near one, beats a
-    watched one for the same reason.
-    """
-    account, on_service, keys = check.account, check.on_service, _row_keys(film)
-    detail = imported_detail(
-        film.rows, keys, account, on_service, watched_dates=check.watched_dates
-    )
-    if detail is not None:
-        return None, [review_entry(film, "on-service", detail)]
-    if (match := account_match(keys, account.logged, on_service)) is not None:
-        return _logged_fate(film, check, match)
-    if (match := account_match(keys, account.watched, on_service)) is not None:
-        detail = near_detail("watched-only", match)
-        return film, [review_entry(film, "watched-only", detail), *sent_entries(film)]
-    return film, sent_entries(film)
-
-
-def _grow_holds(
-    films: Sequence[Film],
-    holds: dict[str, Hold],
-    on_service: Callable[[FilmKey, frozenset[FilmKey]], bool],
-    watched_dates: bool,
-) -> None:
-    """Grow ``holds`` in place to a fixed point.
-
-    A film that sending would hide a held one is held too, under that film's kind,
-    and passes the hold on in turn, since its own rows can hide another film's in the
-    same way. With ``watched_dates`` on, a film whose tagged entries would hide one
-    (``_date_hold``) is held the same way. Stops when a pass holds nothing new.
-    """
-    grew = True
-    while grew:
-        held = _held_keys(films, holds)
-        dated = [
-            (f, holds[f.key][0]) for f in films if watched_dates and f.key in holds
-        ]
-        grew = False
-        for film in films:
-            if film.key in holds:
-                continue
-            shared = _shared_hold(film, held, on_service) or _date_hold(film, dated)
-            if shared is not None:
-                holds[film.key] = (shared, _HELD_WITH_ANOTHER)
-                grew = True
+# An item's fate on the account: the item to send, if any, and its review entries.
+Fate = tuple[Item | None, list[ReviewEntry]]
 
 
 def _split_titles(films: Iterable[Film]) -> frozenset[str]:
@@ -405,92 +304,104 @@ def _split_titles(films: Iterable[Film]) -> frozenset[str]:
     return frozenset(by_id & by_title)
 
 
-def _title_holds(films: Sequence[Film], holds: Mapping[str, Hold]) -> dict[str, Hold]:
-    """The holds a film's own titles give it, for each film ``holds`` does not hold.
+def film_splits(films: Sequence[Film]) -> dict[str, str]:
+    """Each film of a title split between a tmdbID film and a title-only film.
 
-    A film with no key to match the account by is held as ``held-no-title``: it
-    could never be found on the account, so it would be sent on every run. A film of
-    a title split between a tmdbID film and a title-only film is ``held-split``.
+    Keyed by the film's key, each with its ``held-split`` detail: the tmdbID half's
+    or the title-only half's (``_SPLIT_DETAILS``). Letterboxd's ``split_holds``.
     """
     split = _split_titles(films)
+    return {
+        film.key: _SPLIT_DETAILS[bool(film.rows[0].tmdb_id)]
+        for film in films
+        if any(key in split for row in film.rows for key in _title_keys(row))
+    }
+
+
+def _title_holds(
+    films: Sequence[Film], holds: Mapping[str, Hold], splits: Mapping[str, str]
+) -> dict[str, Hold]:
+    """The holds an item's own titles give it, for each item ``holds`` does not hold.
+
+    An item with no key to match the account by is held as ``held-no-title``: it
+    could never be found on the account, so it would be sent on every run. An item
+    ``splits`` names, the service's ``split_holds``, is ``held-split`` with the
+    detail it gives.
+    """
     found: dict[str, Hold] = {}
     for film in films:
         if film.key in holds:
             continue
-        if not _row_keys(film):
+        if not row_keys(film):
             found[film.key] = ("held-no-title", None)
-        elif any(key in split for row in film.rows for key in _title_keys(row)):
-            found[film.key] = ("held-split", _SPLIT_DETAILS[bool(film.rows[0].tmdb_id)])
+        elif film.key in splits:
+            found[film.key] = ("held-split", splits[film.key])
     return found
 
 
-def held_films(
-    films: Sequence[Film],
-    on_service: Callable[[FilmKey, frozenset[FilmKey]], bool],
-    *,
-    watched_dates: bool,
+def held_films[C, A](
+    films: Sequence[Film], spec: ServiceSpec[C, A], config: C, account: A
 ) -> dict[str, Hold]:
-    """Every held film's key, with its hold's kind and detail (``None``: the kind's own).
+    """Every held item's key, with its hold's kind and detail (``None``: the kind's own).
 
-    Seeded with the films an ``ambiguous`` or ``failed`` row holds and grown to
-    a fixed point (``_grow_holds``, by date too when ``watched_dates``); then the
-    films still free that ``_title_holds`` holds are added, and the holds grown
-    again. A film an ambiguous or failed one already holds keeps that kind, so the
-    operator settles the lookup first.
+    Seeded with the items an ``ambiguous`` or ``failed`` row holds and grown to a
+    fixed point by ``spec.grow_holds``; then the items still free that
+    ``_title_holds`` holds are added, the splits ``spec.split_holds`` finds with
+    ``account`` and ``config`` among them, and the holds grown again. An item an ambiguous
+    or failed one already holds keeps that kind, so the operator settles the lookup
+    first.
     """
     holds: dict[str, Hold] = {
         film.key: (hold, None)
         for film in films
         if (hold := held_kind(film)) is not None
     }
-    _grow_holds(films, holds, on_service, watched_dates)
-    holds |= _title_holds(films, holds)
-    _grow_holds(films, holds, on_service, watched_dates)
+    spec.grow_holds(films, holds, config)
+    holds |= _title_holds(films, holds, spec.split_holds(films, account, config))
+    spec.grow_holds(films, holds, config)
     return holds
 
 
 # fuzz-target
-def select(
+def select[C, A](
     rows: Sequence[ResolvedRow],
     *,
+    spec: ServiceSpec[C, A],
+    config: C,
+    account: A,
     cutoff: Cutoff | None,
-    account: Account,
-    on_service: Callable[[FilmKey, frozenset[FilmKey]], bool],
-    watched_dates: bool,
     omit: Sequence[OmitEntry] = (),
 ) -> Selection:
     """Cut, omit, hold, skip, drop, and order ``rows``, as the module docstring says.
 
-    ``on_service`` answers whether a film, as ``FilmKey(title_key, year)`` of one of
-    its rows, is in one of ``account``'s sets of films. ``watched_dates`` is whether
-    rows go with their WatchedDate, so a row can meet a diary entry's date. ``omit``
-    names the films left out (``OmitEntry.names``): one row named leaves out its whole
-    film, since a film is sent whole or not at all. Raises
-    ``CutoffError`` before deciding anything when the cutoff names no dated row with
+    ``spec`` keys the items, grows the holds, and decides each free item's fate on
+    ``account``, each with ``config``, its table of the export config. ``omit`` names
+    the items left out (``OmitEntry.names``): one row named leaves out its whole item,
+    since an item is sent whole or not at all. Raises ``CutoffError``, naming the
+    spec's table, before deciding anything when the cutoff names no dated row with
     its title.
     """
-    kept, cut = apply_cutoff(rows, cutoff)
-    grouped = group_films(kept)
+    kept, cut = apply_cutoff(rows, cutoff, where=f"{spec.name}.cutoff")
+    grouped = group_films(kept, spec.item_key)
     # Named from every row read, the cut ones included, as check_omit accepts an
     # entry: an entry whose only named row was cut still leaves out its film's kept
     # rows, so moving the cutoff never turns an entry into one that omits nothing.
     left_out = {
-        film_key(row) for row in rows if any(entry.names(row) for entry in omit)
+        spec.item_key(row) for row in rows if any(entry.names(row) for entry in omit)
     }
     # An omitted film is never sent, so it can hide no held film, nor split a title.
     free = [film for film in grouped if film.key not in left_out]
-    holds = held_films(free, on_service, watched_dates=watched_dates)
-    check = _AccountCheck(account, on_service, watched_dates)
+    holds = held_films(free, spec, config, account)
     films: list[Film] = []
     review: list[ReviewEntry] = []
     for film in grouped:
         if film.key in left_out:
-            review.append(review_entry(film, "omitted"))
+            review.append(review_entry(film, "omitted", _OMITTED.format(spec.name)))
             continue
         if film.key in holds:
             review.append(review_entry(film, *holds[film.key]))
             continue
-        sent, entries = _account_fate(film, check)
+        sent, entries = spec.account_fate(film, account, config)
         review += entries
         if sent is not None:
             films.append(sent)

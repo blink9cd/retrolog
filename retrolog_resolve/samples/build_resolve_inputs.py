@@ -55,6 +55,11 @@ _YEAR = 2010
 _READ, _SEEN = f"{_YEAR}/read.txt", f"{_YEAR}/seen.txt"
 # Made-up ISBN-13s with valid check digits: the 978 prefix and then zeros.
 _ISBN_A, _ISBN_B = "9780000000002", "9780000000019"
+_ISBN_C = "9780000000026"
+_PRINT_ON_DEMAND = ("CreateSpace Independent Publishing Platform",)
+# The work key the example overrides file gives Moby Dick, and an invented author.
+_MOBY_DICK_WORK = "/works/OL1000001W"
+_MOBY_DICK_AUTHOR = "/authors/OL1000001A"
 _STEPS: tuple[resolve_books.Step, ...] = (
     "edition-by-year",
     "edition-after",
@@ -146,14 +151,31 @@ def _book_answers() -> dict[str, object]:
     empty = fx.ol_payload()
     four = "Placeholder Book Four"
     return {
+        # The work the example file's Moby Dick override names, and its one author:
+        # the override's row takes its creator and its empty year from them.
+        resolve_books.work_url(_MOBY_DICK_WORK): fx.ol_work_body(
+            _MOBY_DICK_WORK, _MOBY_DICK_AUTHOR, first_publish_date="1851"
+        ),
+        resolve_books.author_url(_MOBY_DICK_AUTHOR): fx.ol_author_body(
+            _MOBY_DICK_AUTHOR, "Invented Author"
+        ),
         url("Placeholder Book Two", 0): fx.ol_payload(
             _work("Placeholder Book Two", "/works/OL1000011W", "Author Two", _ISBN_A)
+        ),
+        # Its search's first edition is a print-on-demand one, so the edition list's
+        # pick passes it over for the other English edition.
+        resolve_books.editions_url("/works/OL1000011W", 0): fx.ol_editions_page(
+            fx.ol_edition_entry(
+                isbn13=[_ISBN_A], publish_date="2009", publishers=_PRINT_ON_DEMAND
+            ),
+            fx.ol_edition_entry(isbn13=[_ISBN_C], publish_date="1995"),
         ),
         url("Placeholder Book Three", 0): empty,
         url("Placeholder Book Three", 1): empty,
         url("Placeholder Book Three", 2): fx.ol_payload(
             _work("Placeholder Book Three", "/works/OL1000012W", "Author Three")
         ),
+        resolve_books.editions_url("/works/OL1000012W", 0): fx.ol_editions_page(),
         url(four, 0): empty,
         url(four, 1): empty,
         url(four, 2): fx.ol_payload(

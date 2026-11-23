@@ -1,0 +1,143 @@
+{
+  "counts": {
+    "author-missing": 1,
+    "books-sent": 9,
+    "by-title": 1,
+    "files": 1,
+    "formula-cell": 1,
+    "held-ambiguous": 1,
+    "held-failed": 0,
+    "held-no-title": 0,
+    "held-split": 0,
+    "omitted": 1,
+    "on-service": 2,
+    "remove-first": 2,
+    "reread-merged": 1,
+    "rows-cut": 2,
+    "rows-sent": 9,
+    "title-only": 1,
+    "undated": 1,
+    "unrated": 1
+  },
+  "entries": [
+    {
+      "detail": "already read or rated on the account, so not sent",
+      "error": false,
+      "kind": "on-service",
+      "rows": [
+        "2010/books.txt:12"
+      ],
+      "title": "Placeholder Book Eleven"
+    },
+    {
+      "detail": "on the account's to-read shelf; remove it from Goodreads before importing",
+      "error": false,
+      "kind": "remove-first",
+      "rows": [
+        "2010/books.txt:14"
+      ],
+      "title": "Placeholder Book Fifteen"
+    },
+    {
+      "detail": "an override whose Open Library work gave no author; run resolve again to fill it in",
+      "error": false,
+      "kind": "author-missing",
+      "rows": [
+        "2010/books.txt:7"
+      ],
+      "title": "Placeholder Book Five"
+    },
+    {
+      "detail": "sent by Title alone, with no ISBN-13 or author; check after the import that Goodreads found it",
+      "error": false,
+      "kind": "title-only",
+      "rows": [
+        "2010/books.txt:6"
+      ],
+      "title": "Placeholder Book Four"
+    },
+    {
+      "detail": "sent with no read date",
+      "error": false,
+      "kind": "undated",
+      "rows": [
+        "misc/books.txt:2"
+      ],
+      "title": "Placeholder Book Fourteen"
+    },
+    {
+      "detail": "named in goodreads.omit, so not sent; remove the entry to consider it again",
+      "error": false,
+      "kind": "omitted",
+      "rows": [
+        "2010/books.txt:11"
+      ],
+      "title": "Placeholder Book Nine"
+    },
+    {
+      "detail": "already read or rated on the account, so not sent",
+      "error": false,
+      "kind": "on-service",
+      "rows": [
+        "2010/books.txt:9"
+      ],
+      "title": "Placeholder Book Seven"
+    },
+    {
+      "detail": "merged with 1 earlier read: sent once, as the newest read",
+      "error": false,
+      "kind": "reread-merged",
+      "rows": [
+        "2010/books.txt:8",
+        "2019/books.txt:2"
+      ],
+      "title": "Placeholder Book Six"
+    },
+    {
+      "detail": "resolve did not settle on one match; settle it with an override",
+      "error": true,
+      "kind": "held-ambiguous",
+      "rows": [
+        "2010/books.txt:10"
+      ],
+      "title": "Placeholder Book Ten"
+    },
+    {
+      "detail": "sent by Title and Author with no ISBN-13; check after the import that Goodreads matched the right edition",
+      "error": false,
+      "kind": "by-title",
+      "rows": [
+        "2010/books.txt:5"
+      ],
+      "title": "Placeholder Book Three"
+    },
+    {
+      "detail": "its My Review cell starts with a character a spreadsheet reads as a formula; upload the file without opening it in one",
+      "error": false,
+      "kind": "formula-cell",
+      "rows": [
+        "2010/books.txt:5"
+      ],
+      "title": "Placeholder Book Three"
+    },
+    {
+      "detail": "on the account's custom-shelf shelf; remove it from Goodreads before importing",
+      "error": false,
+      "kind": "remove-first",
+      "rows": [
+        "2010/books.txt:13"
+      ],
+      "title": "Placeholder Book Twelve"
+    },
+    {
+      "detail": "sent with no rating; rate it by hand",
+      "error": false,
+      "kind": "unrated",
+      "rows": [
+        "2010/books.txt:13"
+      ],
+      "title": "Placeholder Book Twelve"
+    }
+  ],
+  "schema_version": 1
+}

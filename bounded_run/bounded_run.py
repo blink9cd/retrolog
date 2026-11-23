@@ -22,12 +22,18 @@ child's through the process table, then kills them all (``src/boundedrun_posix_t
 a descendant whose own parent exited before the kill, and which left that parent's group, is
 out of the POSIX walk's reach. ``bounded_run.md`` records why, and what has been run where.
 
+``memory_limit=`` bounds the tree's memory too: on macOS and Linux a watchdog thread sums the
+tree's footprint every few milliseconds and, past the limit, kills the tree and raises
+``MemoryLimitExceeded`` (or ``MemoryWatchFailed``, killing it too, should a read fail);
+Windows refuses it before spawning (``src/boundedrun_memory.py``).
+
 Entry point assumptions
 -----------------------
 ``run_bounded`` is a drop-in for a capturing ``subprocess.run``: it bakes in ``capture_output``,
 ``encoding``/``errors`` (the policy ``stdio_utf8`` defines) and ``check=False``, returns a
 ``CompletedProcess``, and raises ``subprocess.TimeoutExpired`` carrying partial output. Every
 existing ``except subprocess.TimeoutExpired`` handler therefore keeps working unchanged.
+``stream_bounded`` alone does not capture: it hands the caller stdout to read as it comes.
 
 This module is a library: it has no CLI, and each tool imports it after putting this folder on
 ``sys.path`` from its own location, as ``bounded_run.md`` documents.
@@ -67,8 +73,15 @@ from boundedrun_drain import (
 )
 import boundedrun_live
 from boundedrun_live import live_pids as live_pids  # public: is a child now reachable?
+import boundedrun_memory
+from boundedrun_memory import MemoryLimitExceeded as MemoryLimitExceeded
+from boundedrun_memory import MemoryWatchFailed as MemoryWatchFailed
+from boundedrun_memory import TreeObserver as TreeObserver
+import boundedrun_contained
 import boundedrun_posix_tree
 import boundedrun_spawn
+import boundedrun_stream
+from boundedrun_stream import BoundedStream as BoundedStream
 from boundedrun_spawn_flags import spawn_creationflags
 
 # The Win32 structure layouts and the kernel32 function table, re-exported from their own module.
@@ -329,35 +342,23 @@ def _release(pid: int) -> None:
         api.close(job)
 
 
-def _drain_contained(
-    proc: subprocess.Popen[_Stream],
-    argv: Sequence[str],
-    timeout: float,
-    kill_tree_fn: KillTreeFn,
-    stdin_data: _Stream | None,
-    clock: Clock | None = None,
-) -> tuple[_Stream, _Stream]:
-    """Contain the registered *proc*, drain it under the bound, and release its job after."""
-    try:
-        _start_contained(proc)
-        return _communicate_bounded(
-            proc, argv, timeout, kill_tree_fn, stdin_data, clock
-        )
-    finally:
-        _release(proc.pid)
-
-
 def _drainer(
     argv: Sequence[str],
     timeout: float,
     kill_tree_fn: KillTreeFn,
     stdin_data: _Stream | None,
     clock: Clock | None = None,
+    memory: boundedrun_memory.MemoryBound | None = None,
 ) -> Callable[[subprocess.Popen[_Stream]], tuple[_Stream, _Stream]]:
-    """The drain the spawn runs on a child once it is registered (property 8)."""
-    return lambda child: _drain_contained(
-        child, argv, timeout, kill_tree_fn, stdin_data, clock
-    )
+    """The drain the spawn runs on a child once it is registered (property 8).
+
+    It contains the child, drains it under its bounds and releases its job after
+    (``src/boundedrun_contained.py``).
+    """
+    return lambda child: boundedrun_contained.drain_contained(
+        child, argv, timeout, kill_tree_fn, stdin_data, clock, memory,
+        contain=_start_contained, release=_release,
+    )  # fmt: skip
 
 
 def run_bounded(
@@ -371,6 +372,8 @@ def run_bounded(
     clock: Clock | None = None,
     hide_window: bool = False,
     inherit_stderr: bool = False,
+    memory_limit: int | None = None,
+    tree_observer: TreeObserver | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Run *argv*, capturing text output, bounded by *timeout* with a real tree kill.
 
@@ -399,10 +402,18 @@ def run_bounded(
     long child run for its stdout alone, whose progress lines would otherwise wait in the
     pipe until it ends.
 
+    *memory_limit*, in bytes, bounds the memory of the child's whole process tree: a watchdog
+    polls it and, past the limit, kills the tree and raises :class:`MemoryLimitExceeded` with
+    the partial output; one that cannot read the tree kills it too and raises
+    :class:`MemoryWatchFailed`. macOS and Linux only; elsewhere, and for a value that is not a
+    positive ``int``, ValueError before spawning. *tree_observer*, which needs it, is filled in
+    with how many processes the watchdog saw in the tree (:class:`TreeObserver`).
+
     Deliberately not used as a context manager: ``Popen.__exit__`` calls an unbounded ``wait()``,
     which would reintroduce the very hang this module removes on the failed-kill path.
     """
     refuse_bad_call(argv, clock, stdin_text)
+    memory = boundedrun_memory.memory_bound(memory_limit, sys.platform, tree_observer)
     proc, (stdout, stderr) = boundedrun_spawn.run_text(
         argv,
         cwd=cwd,
@@ -413,7 +424,7 @@ def run_bounded(
         ),
         encoding=stdio_utf8.ENCODING,
         errors=stdio_utf8.CAPTURE_ERRORS,
-        drain=_drainer(argv, timeout, kill_tree_fn, stdin_text, clock),
+        drain=_drainer(argv, timeout, kill_tree_fn, stdin_text, clock, memory),
         kill_tree_fn=kill_tree_fn,
         inherit_stderr=inherit_stderr,
     )
@@ -432,15 +443,19 @@ def run_bounded_bytes(
     kill_tree_fn: KillTreeFn = kill_tree,
     clock: Clock | None = None,
     hide_window: bool = False,
+    memory_limit: int | None = None,
+    tree_observer: TreeObserver | None = None,
 ) -> subprocess.CompletedProcess[bytes]:
     """Binary-mode sibling of :func:`run_bounded`, for a caller that feeds and reads raw bytes.
 
     Exists for a caller that runs a program such as git in binary mode with piped stdin. Kept a
     separate named function rather than a ``text: bool`` switch so each has one reason to exist
     and mypy needs no ``@overload``. Its no-stdin arm is ``DEVNULL``, and *clock* means
-    what it does there, and so does *hide_window*, for the same reasons as :func:`run_bounded`'s.
+    what it does there, and so do *hide_window*, *memory_limit* and *tree_observer*, for the
+    same reasons as :func:`run_bounded`'s.
     """
     refuse_bad_call(argv, clock, stdin_bytes)
+    memory = boundedrun_memory.memory_bound(memory_limit, sys.platform, tree_observer)
     proc, (stdout, stderr) = boundedrun_spawn.run_bytes(
         argv,
         cwd=cwd,
@@ -449,7 +464,33 @@ def run_bounded_bytes(
         creationflags=spawn_creationflags(
             platform=sys.platform, hide_window=hide_window
         ),
-        drain=_drainer(argv, timeout, kill_tree_fn, stdin_bytes, clock),
+        drain=_drainer(argv, timeout, kill_tree_fn, stdin_bytes, clock, memory),
         kill_tree_fn=kill_tree_fn,
     )
     return subprocess.CompletedProcess(list(argv), proc.returncode, stdout, stderr)
+
+
+def stream_bounded(
+    argv: Sequence[str],
+    *,
+    timeout: float,
+    cwd: Path | str | None = None,
+    env: Mapping[str, str] | None = None,
+    kill_tree_fn: KillTreeFn = kill_tree,
+    hide_window: bool = False,
+    memory_limit: int | None = None,
+    tree_observer: TreeObserver | None = None,
+) -> BoundedStream:
+    """A :class:`BoundedStream` over *argv*'s stdout, as bytes, for a ``with`` statement.
+
+    The caller reads the output as it comes, for a child whose output is too large to hold,
+    while the tree stays under *timeout* (on ``time.monotonic()``) and *memory_limit*, killed by
+    *kill_tree_fn*, as in :func:`run_bounded`; leaving the ``with`` early or by raising kills
+    it (``src/boundedrun_stream.py``). Every refusal, ``memory_limit=`` on Windows among them,
+    is raised here, before anything is spawned, and nothing starts until the stream is entered.
+    """
+    refuse_bad_call(argv, None, None)
+    memory = boundedrun_memory.memory_bound(memory_limit, sys.platform, tree_observer)
+    flags = spawn_creationflags(platform=sys.platform, hide_window=hide_window)
+    spawn = boundedrun_stream.StreamSpawn(cwd, env, flags, _start_contained, _release)
+    return BoundedStream(argv, timeout, kill_tree_fn, memory, spawn)

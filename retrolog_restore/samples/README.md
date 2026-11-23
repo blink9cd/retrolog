@@ -11,7 +11,7 @@ every rating, tag, and review is invented.
 From the tool's folder (the one holding `retrolog_restore.py`):
 
 ```bash
-work="$(mktemp -d)"
+work="$(mktemp -d "${TMPDIR:-/tmp}/retrolog_restore.XXXXXX")"
 python3 samples/build_restore_inputs.py --out "$work"
 python3 retrolog_restore.py --backup "$work/account/backup.zip" --current "$work/account/export-1" --out "$work/restore"
 diff -r -x .retrolog_restore "$work/restore" samples/expected

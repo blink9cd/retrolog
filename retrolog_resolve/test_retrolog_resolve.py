@@ -30,7 +30,7 @@ _SUITE_DIR = _HERE / "tests"
 _MIN_TESTS_BY_FILE: dict[str, int] = {
     # The command line's value checks (resolve_args).
     "test_args.py": 5,
-    "test_books.py": 27,
+    "test_books.py": 42,
     # The shared TMDb id rule and creator joiner (resolve_columns).
     "test_columns.py": 4,
     # Every environment variable the tools read is declared in the project config.
@@ -57,6 +57,11 @@ _MIN_TESTS_BY_FILE: dict[str, int] = {
     "test_resolve_rows.py": 22,
     # An override row's TMDb details request (rule 5).
     "test_resolve_override_details.py": 15,
+    # An override book's Open Library work and authors (rule 5, books).
+    "test_resolve_book_details.py": 23,
+    # A book's ISBN-13 from its work's edition list: the pure pick, then as sent.
+    "test_resolve_editions.py": 31,
+    "test_resolve_edition_lookup.py": 20,
     # The tool and its sample builder on an interpreter with no installed package.
     "test_stdlib_only.py": 2,
     # The token file (resolve_token), then where the command line takes its token from.

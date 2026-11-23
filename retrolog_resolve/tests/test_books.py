@@ -1,5 +1,10 @@
-"""Tests for resolve_books: Open Library search URLs and response parsing."""
+"""Tests for resolve_books: Open Library request URLs and response parsing.
 
+The search, then an override book's work and author requests. Every key and name is
+invented.
+"""
+
+import re
 import sys
 import unittest
 import urllib.parse
@@ -18,7 +23,13 @@ sys.path.insert(0, str(_TESTS))
 import _retrolog_resolve_fuzz_profile  # noqa: E402, F401 - loads the deterministic profile before any @given
 import resolve_books  # noqa: E402
 import resolve_isbn  # noqa: E402
-from resolve_fixtures import ol_edition, ol_payload, ol_work  # noqa: E402
+from resolve_fixtures import (  # noqa: E402
+    ol_author_body,
+    ol_edition,
+    ol_payload,
+    ol_work,
+    ol_work_body,
+)
 from resolve_strategies import json_values  # noqa: E402
 
 # The fields every query asks for, restated here so a change to them fails a test.
@@ -29,6 +40,15 @@ _FIELDS = (
 # A valid ISBN-10 and the ISBN-13 it converts to.
 _ISBN10 = "0-306-40615-2"
 _ISBN13 = "9780306406157"
+# Invented Open Library work and author keys, and the URLs naming them.
+_WORK = "/works/OL1W"
+_OTHER_WORK = "/works/OL2W"
+_FIRST = "/authors/OL1A"
+_SECOND = "/authors/OL2A"
+_WORK_URL = "https://openlibrary.org/works/OL1W.json"
+_FIRST_URL = "https://openlibrary.org/authors/OL1A.json"
+_TITLE = "Placeholder Book One"
+_KEY_SHAPES = re.compile(r"/authors/OL[0-9]+A")
 # Every step of the chain, in order.
 _STEPS: tuple[resolve_books.Step, ...] = (
     "edition-by-year",
@@ -234,6 +254,16 @@ class ParseSearchTest(unittest.TestCase):
         )
         self.assertEqual([c.id for c in candidates], ["/works/OL9W"])
 
+    def test_doc_whose_key_is_not_a_work_is_skipped(self) -> None:
+        # Open Library's search index lists some orphan editions as works, with an
+        # edition key (an M suffix) under /works/; a candidate must carry a work key,
+        # the one shape overrides and the review page accept.
+        shapes = ("/works/OL12M", "/books/OL12M", "/works/OL12", "OL12W", "/works/OLW")
+        docs = [ol_work(key=key) for key in shapes]
+        payload = ol_payload(*docs, ol_work(key="/works/OL9W"))
+        candidates = resolve_books.parse_search(payload, "work-only")
+        self.assertEqual([c.id for c in candidates], ["/works/OL9W"])
+
     def test_non_object_doc_is_skipped(self) -> None:
         payload = {"docs": ["text", 3, None, ol_work(key="/works/OL9W")]}
         candidates = resolve_books.parse_search(payload, "work-only")
@@ -291,6 +321,173 @@ class ParseSearchTest(unittest.TestCase):
                     candidate.isbn13 == ""
                     or resolve_isbn.isbn13_or_none(candidate.isbn13) == candidate.isbn13
                 )
+
+
+class UrlTest(unittest.TestCase):
+    """The two request URLs carry the key alone, and refuse anything but a key."""
+
+    def test_the_work_url_is_the_work_s_json(self) -> None:
+        self.assertEqual(resolve_books.work_url(_WORK), _WORK_URL)
+
+    def test_the_author_url_is_the_author_s_json(self) -> None:
+        self.assertEqual(resolve_books.author_url(_FIRST), _FIRST_URL)
+
+    def test_a_malformed_work_key_is_refused(self) -> None:
+        for key in (
+            _TITLE,
+            "OL1W",
+            "/works/OL1M",
+            "/works/OLW",
+            "/works/OL1W/../authors",
+            "/works/OL1W\n",
+            "/works/OL١W",
+            _FIRST,
+        ):
+            with self.subTest(key=key), self.assertRaises(ValueError):
+                resolve_books.work_url(key)
+
+    def test_a_malformed_author_key_is_refused(self) -> None:
+        for key in (
+            "Invented Author",
+            "OL1A",
+            "/authors/OL1A?x=1",
+            "/authors/OL1A\n",
+            _WORK,
+        ):
+            with self.subTest(key=key), self.assertRaises(ValueError):
+                resolve_books.author_url(key)
+
+
+class ParseWorkTest(unittest.TestCase):
+    """``parse_work`` reads a work body's author keys, in order, and its year."""
+
+    def test_the_authors_in_order_and_the_year(self) -> None:
+        body = ol_work_body(_WORK, _SECOND, _FIRST, first_publish_date="1901")
+        work = resolve_books.parse_work(body, _WORK)
+        assert work is not None
+        self.assertEqual(work.author_keys, (_SECOND, _FIRST))
+        self.assertEqual(work.year, 1901)
+
+    def test_an_author_listed_twice_is_kept_once(self) -> None:
+        work = resolve_books.parse_work(ol_work_body(_WORK, _FIRST, _FIRST), _WORK)
+        assert work is not None
+        self.assertEqual(work.author_keys, (_FIRST,))
+
+    def test_the_year_is_a_four_digit_run_in_the_date(self) -> None:
+        dates = {
+            "1901": 1901,
+            "April 10, 1901": 1901,
+            "c. 1901?": 1901,
+            "190": None,
+            "19011": None,
+            "nineteenth century": None,
+            "": None,
+        }
+        for date, year in dates.items():
+            with self.subTest(date=date):
+                body = ol_work_body(_WORK, _FIRST, first_publish_date=date)
+                work = resolve_books.parse_work(body, _WORK)
+                assert work is not None
+                self.assertEqual(work.year, year)
+
+    def test_a_missing_or_odd_date_is_no_year(self) -> None:
+        for date in (None, 1901, ["1901"]):
+            with self.subTest(date=date):
+                body = ol_work_body(_WORK, _FIRST)
+                if date is not None:
+                    body["first_publish_date"] = date
+                work = resolve_books.parse_work(body, _WORK)
+                assert work is not None
+                self.assertIsNone(work.year)
+
+    def test_a_malformed_author_entry_is_skipped(self) -> None:
+        body = ol_work_body(_WORK, _FIRST)
+        entries = body["authors"]
+        assert isinstance(entries, list)
+        entries[:0] = [
+            "not an entry",
+            {"type": {"key": "/type/author_role"}},
+            {"author": "/authors/OL3A"},
+            {"author": {"key": 3}},
+            {"author": {"key": "Invented Author"}},
+            {"author": {"key": "/authors/OL3A/../x"}},
+        ]
+        work = resolve_books.parse_work(body, _WORK)
+        assert work is not None
+        self.assertEqual(work.author_keys, (_FIRST,))
+
+    def test_an_unusable_body_is_none(self) -> None:
+        no_authors = ol_work_body(_WORK)
+        del no_authors["authors"]
+        bodies: tuple[object, ...] = (
+            None,
+            ["not", "an", "object"],
+            no_authors,
+            ol_work_body(_WORK),
+            {**ol_work_body(_WORK, _FIRST), "authors": "not a list"},
+            ol_work_body(_OTHER_WORK, _FIRST),
+            {"key": _WORK, "type": {"key": "/type/redirect"}, "location": _OTHER_WORK},
+        )
+        for body in bodies:
+            with self.subTest(body=body):
+                self.assertIsNone(resolve_books.parse_work(body, _WORK))
+
+    @given(
+        st.one_of(
+            json_values,
+            st.builds(
+                ol_work_body,
+                st.just(_WORK),
+                st.text(),
+                first_publish_date=st.one_of(st.none(), st.text()),
+            ),
+            st.builds(
+                lambda author: {"key": _WORK, "authors": [{"author": author}]},
+                json_values,
+            ),
+        )
+    )
+    def test_fuzz_parse_work(self, payload: object) -> None:
+        work = resolve_books.parse_work(payload, _WORK)
+        if work is not None:
+            self.assertTrue(work.author_keys)
+            for key in work.author_keys:
+                self.assertTrue(_KEY_SHAPES.fullmatch(key))
+            self.assertTrue(work.year is None or 1000 <= work.year <= 9999)
+
+
+class ParseAuthorTest(unittest.TestCase):
+    """``parse_author`` reads an author body's name, else its personal name."""
+
+    def test_the_name_stripped(self) -> None:
+        body = ol_author_body(_FIRST, "  Invented Author ")
+        self.assertEqual(resolve_books.parse_author(body), "Invented Author")
+
+    def test_the_personal_name_when_the_name_is_unusable(self) -> None:
+        for name in (None, "", "   ", 3):
+            with self.subTest(name=name):
+                body = {"name": name, "personal_name": " Invented Person "}
+                self.assertEqual(resolve_books.parse_author(body), "Invented Person")
+
+    def test_no_usable_name_is_none(self) -> None:
+        bodies: tuple[object, ...] = (
+            None,
+            ["Invented Author"],
+            {},
+            {"name": " ", "personal_name": ["Invented Person"]},
+        )
+        for body in bodies:
+            with self.subTest(body=body):
+                self.assertIsNone(resolve_books.parse_author(body))
+
+    @given(
+        st.one_of(json_values, st.builds(ol_author_body, st.just(_FIRST), st.text()))
+    )
+    def test_fuzz_parse_author(self, payload: object) -> None:
+        name = resolve_books.parse_author(payload)
+        if name is not None:
+            self.assertEqual(name, name.strip())
+            self.assertTrue(name)
 
 
 if __name__ == "__main__":

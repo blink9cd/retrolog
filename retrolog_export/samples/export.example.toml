@@ -78,3 +78,69 @@ title = "Placeholder Film Nine"
 [[letterboxd.omit]]
 title = "Placeholder Film Seven"
 year = 1960
+
+# How books are written for Goodreads' importer. A file with no [goodreads] table
+# configures no Goodreads export; a file may hold it, [letterboxd], or both.
+[goodreads]
+# Shelves written to every exported book's Bookshelves, at least one. Each is 1 to 50
+# lowercase letters, digits, hyphens, or underscores (no comma, space, or capital) and
+# starts with "retrolog", so one shelf finds or undoes the import; any other shelf
+# stops the run.
+shelves = ["retrolog"]
+# The Date Added an undated row gets, a date such as 1900-01-01 (no quotes), so an
+# undated book sorts below every dated one; its Date Read stays blank. A dated row's
+# Date Added is its read date. Leave it out only when no row is undated: an undated
+# row with none stops the run.
+undated_date_added = 1900-01-01
+# Optional: a note written to Private Notes on every row. It may hold {year} and
+# {date}, the read's year and ISO date ({{ and }} for literal braces), and at most 500
+# characters; an undated row leaves out a note naming either. "" or leaving it out
+# adds none. The row's comment goes to My Review, never here.
+private_note = "Example import. Read {year}."
+# Optional: a sentence added after the note, on a rated row only. It may hold
+# {rating}, the word [goodreads.rating_names] gives the row's rating key.
+private_note_rating = "Lists said: {rating}."
+# Optional: a sentence added last, on a book read more than once. Such a book is one
+# row, its newest read's date and rating; {years} is the earlier reads' years, oldest
+# first, joined by ", ".
+private_note_earlier = "Earlier reads: {years}."
+
+# Each rating key a row can carry mapped to stars from 0.5 to 5 in halves, as for
+# [letterboxd.ratings]. Goodreads keeps a half star. A row rated with a key missing
+# here stops the run; an unrated row is exported with no rating.
+[goodreads.ratings]
+"a" = 1
+"b" = 2.5
+"c" = 3.5
+"d" = 5
+
+# Optional: the word private_note_rating prints for each rating key, 1 to 50
+# characters, each key also in [goodreads.ratings]. A sentence naming {rating} needs a
+# word for every key there.
+[goodreads.rating_names]
+"a" = "poor"
+"b" = "fair"
+"c" = "good"
+"d" = "great"
+
+# Optional: a tag shelf for each account shelf a book can already be on. A book sent
+# although the library export has it on a shelf other than read, with no rating and
+# no read count (to-read, or a custom shelf), is listed "remove-first" in review.md:
+# remove it from Goodreads before the import, so it arrives as a new book. Its row
+# also gets the tag named here for its old shelf, which keeps that grouping; a shelf
+# with no entry adds none. Each name is a shelf name as above, but a tag needs no
+# "retrolog" prefix: it keeps the account's own grouping.
+[goodreads.shelf_tags]
+"custom-shelf" = "custom-shelf-read"
+
+# Optional: the source row from which no book is exported, as [letterboxd.cutoff].
+[goodreads.cutoff]
+file = "2019/books.txt"
+line = 4
+title = "Placeholder Book Eight"
+
+# Optional: books never sent, one [[goodreads.omit]] table each, named by title and
+# year as [[letterboxd.omit]] names a film, and listed "omitted" in review.md.
+[[goodreads.omit]]
+title = "Placeholder Book Nine"
+year = 1955

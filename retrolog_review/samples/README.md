@@ -12,7 +12,7 @@ and `picks.example.json` picks among those same invented entries.
 From the tool's folder (the one holding `retrolog_review.py`):
 
 ```bash
-work="$(mktemp -d)"
+work="$(mktemp -d "${TMPDIR:-/tmp}/retrolog_review.XXXXXX")"
 python3 retrolog_review.py --mode page --review samples/review.json --out "$work/review.html"
 python3 retrolog_review.py --mode overrides --review samples/review.json --picks samples/picks.example.json --out "$work/overrides.toml"
 diff "$work/review.html" samples/expected/review.html

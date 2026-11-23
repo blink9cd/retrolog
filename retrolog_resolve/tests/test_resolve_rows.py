@@ -24,6 +24,7 @@ sys.path.insert(0, str(_TOOL.parent / "retrolog_parse" / "src"))
 sys.path.insert(0, str(_TESTS / "fixtures"))
 sys.path.insert(0, str(_TESTS))
 import _retrolog_resolve_fuzz_profile  # noqa: E402, F401 - loads the deterministic profile before any @given
+import resolve_books  # noqa: E402 - after the sys.path inserts above
 import resolve_films  # noqa: E402 - after the sys.path inserts above
 import resolve_rows  # noqa: E402 - after the sys.path inserts above
 from resolve_fixtures import (  # noqa: E402 - after the sys.path inserts above
@@ -44,6 +45,7 @@ from resolve_rows_case import (  # noqa: E402 - after the sys.path inserts above
     STEP3,
     RowsCase,
     kinds,
+    no_editions,
     ol_url,
     overrides_of,
 )
@@ -210,7 +212,7 @@ class GroupingTest(RowsCase):
 class TitleOverrideTest(RowsCase):
     """Rule 3: a title-only override decides every group of its title, unasked."""
 
-    def test_a_title_override_sets_the_ids_with_no_request(self) -> None:
+    def test_a_title_override_sets_the_ids_with_no_search(self) -> None:
         rows = [
             input_row("Moby Dick", date="2010-01-01", line=1),
             input_row("moby  dick", date="2012-01-01", line=2),
@@ -218,8 +220,11 @@ class TitleOverrideTest(RowsCase):
         overrides = overrides_of(
             f'medium = "book"\ntitle = "Moby Dick"\nisbn13 = "{ISBN}"\nol_work = "/works/OL5W"'
         )
-        out, review = self.run_all(rows, overrides)
-        self.assertEqual(self.fetch.calls, [])
+        # Only its work's details are asked for (test_resolve_book_details); this
+        # one names no author, so the row keeps what the override set.
+        work_url = resolve_books.work_url("/works/OL5W")
+        out, review = self.run_all(rows, overrides, {work_url: {"key": "/works/OL5W"}})
+        self.assertEqual(self.fetch.calls, [work_url])
         self.assertEqual(
             [self.status(r) for r in out], [("override", ISBN, "/works/OL5W", "")] * 2
         )
@@ -334,7 +339,8 @@ class TmdbTitleTest(RowsCase):
         pages = {
             ol_url("Moby Dick", STEP1): ol_payload(
                 ol_work(editions=(ol_edition(ISBN),))
-            )
+            ),
+            **no_editions("/works/OL1W"),
         }
         out, _ = self.run_all([input_row("Moby Dick")], pages=pages)
         self.assertEqual(self.status(out[0])[0], "resolved")

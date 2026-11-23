@@ -28,7 +28,13 @@ sys.path[:0] = [
 import export_account  # noqa: E402 - after the sys.path inserts above
 import export_select  # noqa: E402 - after the sys.path inserts above
 from export_types import Account, FilmKey, ResolvedRow  # noqa: E402 - after inserts
-from select_case import day, kinds, make_row, sent  # noqa: E402 - after the inserts
+from select_case import (  # noqa: E402 - after the sys.path inserts above
+    day,
+    kinds,
+    letterboxd_select,
+    make_row,
+    sent,
+)
 
 _ROWS = [
     make_row(date=day(1), source_line=1),
@@ -62,7 +68,7 @@ def _select(
     rows: list[ResolvedRow], account: Account, *, watched_dates: bool = True
 ) -> export_select.Selection:
     """``select`` with export_account's own ``on_service``, as the CLI runs it."""
-    return export_select.select(
+    return letterboxd_select(
         rows,
         cutoff=None,
         account=account,

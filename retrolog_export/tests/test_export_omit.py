@@ -41,6 +41,7 @@ from select_case import (  # noqa: E402 - after the sys.path inserts above
     day,
     in_account,
     kinds,
+    letterboxd_select,
     make_row,
     sent,
 )
@@ -68,7 +69,7 @@ def _select(
     rows: list[ResolvedRow], omit: tuple[OmitEntry, ...]
 ) -> export_select.Selection:
     """``select`` on an empty account, no cutoff, leaving out ``omit``."""
-    return export_select.select(
+    return letterboxd_select(
         rows,
         cutoff=None,
         account=Account(),
@@ -147,7 +148,7 @@ class OmitConfigTest(unittest.TestCase):
 class CheckOmitTest(unittest.TestCase):
     def test_an_entry_naming_a_row_passes(self) -> None:
         config = _letterboxd({"title": "Metropolis", "year": 1927})
-        export_config.check_omit(config, [make_row(**METROPOLIS)])
+        export_config.check_omit(config, [make_row(**METROPOLIS)], where="letterboxd")
 
     def test_an_entry_naming_no_row_is_refused_by_its_index(self) -> None:
         config = _letterboxd(
@@ -155,13 +156,17 @@ class CheckOmitTest(unittest.TestCase):
             {"title": "Metropolis", "year": 1928},
         )
         with self.assertRaises(export_config.ConfigError) as caught:
-            export_config.check_omit(config, [make_row(**METROPOLIS)])
+            export_config.check_omit(
+                config, [make_row(**METROPOLIS)], where="letterboxd"
+            )
         self.assertEqual(str(caught.exception), "letterboxd.omit[2]: matches no row")
 
     def test_a_yearless_entry_does_not_match_a_row_with_a_year(self) -> None:
         config = _letterboxd({"title": "Metropolis"})
         with self.assertRaises(export_config.ConfigError):
-            export_config.check_omit(config, [make_row(**METROPOLIS)])
+            export_config.check_omit(
+                config, [make_row(**METROPOLIS)], where="letterboxd"
+            )
         export_config.check_omit(
             config,
             [
@@ -172,6 +177,7 @@ class CheckOmitTest(unittest.TestCase):
                     tmdb_id="1000002",
                 )
             ],
+            where="letterboxd",
         )
 
 
@@ -291,7 +297,7 @@ class SelectOmitTest(unittest.TestCase):
             source_file="list.txt",
             source_line=5,
         )
-        chosen = export_select.select(
+        chosen = letterboxd_select(
             [kept, named],
             cutoff=Cutoff("list.txt", 5, "alpha"),
             account=Account(),

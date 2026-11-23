@@ -29,6 +29,7 @@ from resolve_fixtures import Answering  # noqa: E402 - after the sys.path insert
 from test_resolve_cli import (  # noqa: E402 - after the sys.path insert above
     _BOOK_URL,
     _CONTACT_ENV,
+    _EDITIONS_URL,
     _FILM_URL,
     _MARKER,
     _TOKEN_ENV,
@@ -98,7 +99,7 @@ class FilmOnlyTest(_CliCase):
 class BookOnlyTest(_CliCase):
     def test_a_book_run_asks_open_library_only(self) -> None:
         self.assertEqual(self.main("--medium", "book"), EXIT_OK, self.stderr)
-        self.assertEqual(self.fetch.calls, [_BOOK_URL])
+        self.assertEqual(self.fetch.calls, [_BOOK_URL, _EDITIONS_URL])
         self.assertNotIn("film-2010.csv", {p.name for p in self.out.iterdir()})
 
     def test_a_book_run_never_reads_a_token_or_the_token_file(self) -> None:

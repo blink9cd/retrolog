@@ -21,6 +21,7 @@ sys.path.insert(0, str(_TOOL.parent / "retrolog_parse" / "src"))
 sys.path.insert(0, str(_TOOL.parent / "retrolog_resolve" / "src"))
 sys.path.insert(0, str(_TOOL / "src"))
 sys.path.insert(0, str(_TESTS / "fixtures"))
+import export_cells  # noqa: E402 - after the sys.path inserts above
 import export_letterboxd  # noqa: E402 - after the sys.path inserts above
 from export_types import (  # noqa: E402 - after the sys.path inserts above
     NOTE_DATE_FIELDS,
@@ -114,17 +115,17 @@ class ColumnsTest(unittest.TestCase):
 
 class StarsTest(unittest.TestCase):
     def test_an_odd_count_is_a_half_star(self) -> None:
-        self.assertEqual(export_letterboxd.stars(7), "3.5")
-        self.assertEqual(export_letterboxd.stars(1), "0.5")
+        self.assertEqual(export_cells.stars(7), "3.5")
+        self.assertEqual(export_cells.stars(1), "0.5")
 
     def test_an_even_count_is_a_whole_number(self) -> None:
-        self.assertEqual(export_letterboxd.stars(10), "5")
-        self.assertEqual(export_letterboxd.stars(2), "1")
+        self.assertEqual(export_cells.stars(10), "5")
+        self.assertEqual(export_cells.stars(2), "1")
 
     def test_a_count_off_the_scale_is_refused(self) -> None:
         for count in (0, 11, -1):
             with self.subTest(count=count), self.assertRaises(ValueError):
-                export_letterboxd.stars(count)
+                export_cells.stars(count)
 
 
 class IdTest(unittest.TestCase):
@@ -281,6 +282,32 @@ class ReviewTest(unittest.TestCase):
         (read_back,) = list(csv.reader(io.StringIO(buffer.getvalue())))
         self.assertEqual(read_back, list(cells))
         self.assertEqual(read_back[-1], comment)
+
+
+class SharedHelpersTest(unittest.TestCase):
+    # Goodreads' Private Notes call these with its own templates, so each takes the
+    # template rather than a config.
+    def test_note_text_fills_the_given_template(self) -> None:
+        self.assertEqual(
+            export_cells.note_text("Seen {year} ({date})", _row()),
+            "Seen 2010 (2010-03-04)",
+        )
+
+    def test_note_text_drops_a_dated_template_on_an_undated_row(self) -> None:
+        self.assertEqual(export_cells.note_text("Seen {year}", _row(date=None)), "")
+
+    def test_sentence_text_fills_the_given_template(self) -> None:
+        names = MappingProxyType({"2": "mid"})
+        self.assertEqual(
+            export_cells.sentence_text("Lists said: {rating}.", _row(), names),
+            "Lists said: mid.",
+        )
+
+    def test_sentence_text_is_empty_for_an_unrated_row(self) -> None:
+        self.assertEqual(
+            export_cells.sentence_text("Said {rating}.", _row(rating_raw=""), {}),
+            "",
+        )
 
 
 if __name__ == "__main__":

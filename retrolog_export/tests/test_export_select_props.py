@@ -37,6 +37,7 @@ from export_types import (  # noqa: E402 - after the sys.path inserts above
     FilmKey,
     ResolvedRow,
 )
+from select_case import letterboxd_select  # noqa: E402 - after the sys.path inserts
 
 
 def _keys(row: ResolvedRow) -> list[FilmKey]:
@@ -54,7 +55,7 @@ class SelectPropertyTest(unittest.TestCase):
     @settings(deadline=None)
     @given(st.lists(resolved_rows(), max_size=30, unique_by=lambda row: row.where))
     def test_fuzz_select(self, rows: list[ResolvedRow]) -> None:
-        chosen = export_select.select(
+        chosen = letterboxd_select(
             rows,
             cutoff=None,
             account=Account(),
@@ -80,7 +81,7 @@ class SelectPropertyTest(unittest.TestCase):
     def test_no_sent_film_would_hide_a_held_one(
         self, rows: list[ResolvedRow], account: set[FilmKey]
     ) -> None:
-        chosen = export_select.select(
+        chosen = letterboxd_select(
             rows,
             cutoff=None,
             account=Account(logged=frozenset(account), imported=frozenset(account)),
@@ -133,7 +134,7 @@ class SelectPropertyTest(unittest.TestCase):
                 )
             )
         )
-        chosen = export_select.select(
+        chosen = letterboxd_select(
             rows,
             cutoff=cutoff,
             account=Account(logged=account, imported=account),
@@ -162,7 +163,7 @@ class SelectPropertyTest(unittest.TestCase):
     def test_every_account_class_places_each_row_once(
         self, rows: list[ResolvedRow], account: Account, watched_dates: bool
     ) -> None:
-        chosen = export_select.select(
+        chosen = letterboxd_select(
             rows,
             cutoff=None,
             account=account,

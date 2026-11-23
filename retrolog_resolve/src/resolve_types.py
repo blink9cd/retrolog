@@ -62,6 +62,14 @@ class Candidate:
 
 
 @dataclass(frozen=True)
+class WorkDetails:
+    """What one Open Library work body says that an override book needs."""
+
+    author_keys: tuple[str, ...]  # "/authors/OL…A", in the work's order, each once
+    year: int | None  # the four-digit year of first_publish_date, when it holds one
+
+
+@dataclass(frozen=True)
 class Lookup:
     """What one distinct title came to."""
 
@@ -76,7 +84,8 @@ class Lookup:
 class Services:
     """What a lookup sends requests through, and the film rules' settings.
 
-    ``open_library`` is the book chain's; the rest are the film lookup's.
+    ``open_library`` is the book chain's, and an override book's details go through
+    it too; the rest are the film lookup's.
     """
 
     client: Client

@@ -10,6 +10,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import MappingProxyType
 
 _TESTS = Path(__file__).resolve().parent
 _TOOL = _TESTS.parent
@@ -21,6 +22,7 @@ sys.path.insert(0, str(_TOOL.parent / "retrolog_resolve" / "src"))
 sys.path.insert(0, str(_TOOL / "src"))
 sys.path.insert(0, str(_TESTS / "fixtures"))
 import export_account  # noqa: E402 - after the sys.path inserts above
+import export_goodreads  # noqa: E402 - after the sys.path inserts above
 import export_letterboxd  # noqa: E402 - after the sys.path inserts above
 import export_output  # noqa: E402 - after the sys.path inserts above
 import export_pack  # noqa: E402 - after the sys.path inserts above
@@ -30,9 +32,25 @@ from export_fixtures import (  # noqa: E402 - after the sys.path inserts above
     account_csv,
     write_account_folder,
 )
-from export_types import FilmKey, ReviewEntry  # noqa: E402 - after the inserts
+from export_types import (  # noqa: E402 - after the sys.path inserts above
+    FilmKey,
+    LetterboxdConfig,
+    ReviewEntry,
+)
+from select_case import make_row  # noqa: E402 - after the sys.path inserts above
 
-_SPEC = export_services.SERVICES["letterboxd"]
+# The Letterboxd entry by its own name, typed to its own config and account.
+_SPEC = export_services.LETTERBOXD
+# A [letterboxd] table rating select_case's rows, whose key is "2".
+_CONFIG = LetterboxdConfig(
+    half_stars=MappingProxyType({"2": 5}),
+    rating_tags=MappingProxyType({}),
+    tags=("retrolog",),
+    watched_date=True,
+    review_note="",
+    review_note_rows="commented",
+    cutoff=None,
+)
 _COUNTS = {"films-sent": 3, "rows-sent": 4, "rows-cut": 2, "files": 2}
 
 
@@ -53,7 +71,8 @@ def counts(entries: list[ReviewEntry]) -> dict[str, int]:
     """``review_counts`` for ``entries`` and the module's sample totals."""
     return export_output.review_counts(
         entries,
-        films_sent=_COUNTS["films-sent"],
+        medium="film",
+        items_sent=_COUNTS["films-sent"],
         rows_sent=_COUNTS["rows-sent"],
         rows_cut=_COUNTS["rows-cut"],
         files=_COUNTS["files"],
@@ -61,16 +80,18 @@ def counts(entries: list[ReviewEntry]) -> dict[str, int]:
 
 
 class ServicesTest(unittest.TestCase):
-    def test_letterboxd_is_the_only_service(self) -> None:
-        self.assertEqual(list(export_services.SERVICES), ["letterboxd"])
+    def test_the_services_are_letterboxd_and_goodreads(self) -> None:
+        self.assertEqual(list(export_services.SERVICES), ["letterboxd", "goodreads"])
 
     def test_the_letterboxd_spec_names_its_parts(self) -> None:
         self.assertEqual(_SPEC.name, "letterboxd")
         self.assertEqual(_SPEC.medium, "film")
         self.assertEqual(_SPEC.file_stem, "letterboxd")
         self.assertEqual(_SPEC.columns, export_letterboxd.COLUMNS)
-        self.assertIs(_SPEC.row_cells, export_letterboxd.row_cells)
-        self.assertIs(_SPEC.on_service, export_account.on_service)
+        rules = export_services.LETTERBOXD_RULES
+        self.assertIs(rules.on_service, export_account.on_service)
+        self.assertEqual(_SPEC.account_fate, rules.account_fate)
+        self.assertEqual(_SPEC.grow_holds, rules.grow_holds)
 
     def test_the_spec_reads_an_account_export(self) -> None:
         with tempfile.TemporaryDirectory() as holder:
@@ -79,6 +100,31 @@ class ServicesTest(unittest.TestCase):
             )
             account = _SPEC.read_account(folder)
         self.assertEqual(account.watched, frozenset({FilmKey("metropolis", 1927)}))
+
+    def test_letterboxd_item_cells_are_each_rows_row_cells(self) -> None:
+        # Every row of a film, each with the film's withheld rating.
+        rows = (make_row(source_line=1), make_row(source_line=2, rewatch=True))
+        film = export_select.Item("tmdb:1", rows, withhold_rating=True)
+        expected = tuple(
+            export_letterboxd.row_cells(row, _CONFIG, True) for row in rows
+        )
+        self.assertEqual(_SPEC.item_cells(film, _CONFIG), expected)
+
+    def test_the_goodreads_spec_names_its_parts(self) -> None:
+        spec = export_services.SERVICES["goodreads"]
+        self.assertEqual(
+            (spec.name, spec.medium, spec.file_stem), ("goodreads", "book", "goodreads")
+        )
+        self.assertEqual(spec.columns, export_goodreads.COLUMNS)
+        self.assertIs(spec.account_fate, export_goodreads.book_fate)
+        self.assertIs(spec.item_cells, export_goodreads.item_cells)
+        self.assertFalse(spec.test_run)
+        self.assertEqual((spec.default_rows, spec.default_bytes), (10_000, 10_000_000))
+
+    def test_apply_runs_a_function_on_the_spec(self) -> None:
+        for name, spec in export_services.SERVICES.items():
+            with self.subTest(service=name):
+                self.assertIs(spec.apply(lambda chosen: chosen), spec)
 
     def test_the_table_is_read_only(self) -> None:
         with self.assertRaises(TypeError):
@@ -102,7 +148,7 @@ class ImportFilesTest(unittest.TestCase):
     def test_every_packed_file_starts_with_the_header_row(self) -> None:
         film = [tuple(f"cell {n}" for n in range(len(_SPEC.columns)))]
         texts = export_pack.pack(
-            _SPEC.columns, [film] * 5, max_rows=2, max_bytes=1_000_000
+            _SPEC.columns, [film] * 5, max_rows=2, max_bytes=1_000_000, noun="film"
         )
         files = export_output.import_files(_SPEC, texts)
         self.assertEqual(len(files), 3)
@@ -115,9 +161,26 @@ class ImportFilesTest(unittest.TestCase):
 class ReviewCountsTest(unittest.TestCase):
     def test_every_kind_is_counted_zero_included_with_the_totals(self) -> None:
         found = counts([entry("unrated"), entry("unrated"), entry("held-failed")])
-        expected = dict.fromkeys(export_select.REVIEW_KINDS, 0)
+        expected = dict.fromkeys(export_select.review_kinds("film"), 0)
         expected.update({"unrated": 2, "held-failed": 1, **_COUNTS})
         self.assertEqual(found, expected)
+
+    def test_a_book_run_counts_the_book_kinds_and_no_film_only_kind(self) -> None:
+        found = export_output.review_counts(
+            [entry("reread-merged")],
+            medium="book",
+            items_sent=1,
+            rows_sent=1,
+            rows_cut=0,
+            files=1,
+        )
+        book_kinds = export_select.review_kinds("book")
+        self.assertEqual(list(found)[: len(book_kinds)], list(book_kinds))
+        for kind in export_select.FILM_KINDS:
+            self.assertNotIn(kind, found)
+        self.assertEqual(found["reread-merged"], 1)
+        self.assertEqual(found["title-only"], 0)
+        self.assertEqual(found["books-sent"], 1)
 
 
 class ReviewJsonTest(unittest.TestCase):
@@ -175,7 +238,9 @@ class ReviewJsonTest(unittest.TestCase):
 class ReviewMarkdownTest(unittest.TestCase):
     def test_the_count_line_and_one_table_per_kind_in_order(self) -> None:
         entries = [entry("undated"), entry("held-ambiguous", "Placeholder Film Two")]
-        text = export_output.review_markdown(entries, counts=counts(entries))
+        text = export_output.review_markdown(
+            entries, counts=counts(entries), medium="film"
+        )
         lines = text.splitlines()
         self.assertEqual(lines[0], "# retrolog_export review")
         self.assertEqual(
@@ -194,7 +259,7 @@ class ReviewMarkdownTest(unittest.TestCase):
         # Regression: the line once read "in 1 files".
         entries = [entry("held-ambiguous")]
         ones = {"films-sent": 1, "rows-sent": 1, "rows-cut": 1, "files": 1}
-        text = export_output.review_markdown(entries, counts=ones)
+        text = export_output.review_markdown(entries, counts=ones, medium="film")
         self.assertEqual(
             text.splitlines()[2],
             "1 row of 1 film sent in 1 file; 1 row cut. "
@@ -203,7 +268,7 @@ class ReviewMarkdownTest(unittest.TestCase):
 
     def test_a_count_of_zero_reads_plural(self) -> None:
         zeros = {"films-sent": 0, "rows-sent": 0, "rows-cut": 0, "files": 0}
-        text = export_output.review_markdown([], counts=zeros)
+        text = export_output.review_markdown([], counts=zeros, medium="film")
         self.assertEqual(
             text.splitlines()[2],
             "0 rows of 0 films sent in 0 files; 0 rows cut. "
@@ -211,18 +276,22 @@ class ReviewMarkdownTest(unittest.TestCase):
         )
 
     def test_a_kind_with_no_entry_has_no_table(self) -> None:
-        text = export_output.review_markdown([], counts=counts([]))
+        text = export_output.review_markdown([], counts=counts([]), medium="film")
         self.assertNotIn("##", text)
         self.assertIn("0 review items, 0 of them errors.", text)
 
     def test_a_title_cannot_end_a_cell_or_start_markup(self) -> None:
         entries = [entry("undated", "A | B <b>")]
-        text = export_output.review_markdown(entries, counts=counts(entries))
+        text = export_output.review_markdown(
+            entries, counts=counts(entries), medium="film"
+        )
         self.assertIn(r"| A \| B \<b\> |", text)
 
     def test_rows_are_joined_with_commas(self) -> None:
         entries = [entry("undated", rows=("a:1", "b:2"))]
-        text = export_output.review_markdown(entries, counts=counts(entries))
+        text = export_output.review_markdown(
+            entries, counts=counts(entries), medium="film"
+        )
         self.assertIn("| a:1, b:2 |", text)
 
 

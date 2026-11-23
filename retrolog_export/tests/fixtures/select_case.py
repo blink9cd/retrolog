@@ -10,10 +10,21 @@ from __future__ import annotations
 import dataclasses
 import datetime
 from collections.abc import Sequence
+from types import MappingProxyType
 from typing import TypedDict, Unpack
 
 import export_select
-from export_types import Account, Cutoff, FilmKey, ResolvedRow
+from export_letterboxd_select import LetterboxdRules
+from export_match import OnService
+from export_services import LETTERBOXD
+from export_types import (
+    Account,
+    Cutoff,
+    FilmKey,
+    LetterboxdConfig,
+    OmitEntry,
+    ResolvedRow,
+)
 
 BASE = ResolvedRow(
     source_csv="film-2010.csv",
@@ -99,6 +110,42 @@ def imported(keys: frozenset[FilmKey]) -> Account:
     return Account(logged=keys, imported=keys)
 
 
+def letterboxd_select(
+    rows: Sequence[ResolvedRow],
+    *,
+    cutoff: Cutoff | None,
+    account: Account,
+    on_service: OnService,
+    watched_dates: bool,
+    omit: Sequence[OmitEntry] = (),
+) -> export_select.Selection:
+    """``select`` as Letterboxd's spec runs it, its films matched by ``on_service``.
+
+    The config is a bare ``[letterboxd]`` table whose ``watched_date`` is
+    ``watched_dates``: the only key of it selection reads besides the cutoff and omit
+    list, which are passed as the CLI passes them.
+    """
+    rules = LetterboxdRules(on_service)
+    spec = dataclasses.replace(
+        LETTERBOXD,
+        account_fate=rules.account_fate,
+        grow_holds=rules.grow_holds,
+    )
+    config = LetterboxdConfig(
+        half_stars=MappingProxyType({}),
+        rating_tags=MappingProxyType({}),
+        tags=("retrolog",),
+        watched_date=watched_dates,
+        review_note="",
+        review_note_rows="commented",
+        cutoff=cutoff,
+        omit=tuple(omit),
+    )
+    return export_select.select(
+        rows, spec=spec, config=config, account=account, cutoff=cutoff, omit=omit
+    )
+
+
 def select(
     rows: Sequence[ResolvedRow],
     *,
@@ -112,7 +159,7 @@ def select(
     films are skipped whole, as every film on the account once was.
     """
     whole = account if isinstance(account, Account) else imported(account)
-    return export_select.select(
+    return letterboxd_select(
         rows,
         cutoff=cutoff,
         account=whole,

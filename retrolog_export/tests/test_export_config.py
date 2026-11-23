@@ -332,8 +332,13 @@ class CutoffTest(unittest.TestCase):
 class DocumentTest(unittest.TestCase):
     def test_unknown_keys_are_refused(self) -> None:
         self.assertEqual(
+            _refusal(config_toml(head="schema = 1\nstoryboard = 1\n")),
+            "unknown key 'storyboard'",
+        )
+        # goodreads is a service table, so a non-table there is refused by shape.
+        self.assertEqual(
             _refusal(config_toml(head="schema = 1\ngoodreads = 1\n")),
-            "unknown key 'goodreads'",
+            "goodreads: must be a table",
         )
         self.assertEqual(
             _refusal(config_toml(diary=True)), "letterboxd: unknown key 'diary'"
@@ -420,15 +425,19 @@ class CheckKeysTest(unittest.TestCase):
     def test_unmapped_rating_key_is_named(self) -> None:
         rows = [_row("1", 1), _row("2/3", 2), _row("9", 3)]
         with self.assertRaises(export_config.ConfigError) as caught:
-            export_config.check_keys(self.config, rows)
+            export_config.check_keys(self.config, rows, where="letterboxd")
         self.assertEqual(
             str(caught.exception),
             "letterboxd.ratings.2/3: missing, and a row is rated with it",
         )
 
     def test_mapped_and_unrated_rows_pass(self) -> None:
-        export_config.check_keys(self.config, [_row("1", 1), _row("", 2), _row("2", 3)])
-        export_config.check_keys(self.config, [])
+        export_config.check_keys(
+            self.config,
+            [_row("1", 1), _row("", 2), _row("2", 3)],
+            where="letterboxd",
+        )
+        export_config.check_keys(self.config, [], where="letterboxd")
 
 
 if __name__ == "__main__":

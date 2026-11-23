@@ -179,6 +179,88 @@ def ol_payload(*works: Mapping[str, object]) -> dict[str, object]:
     return {"numFound": len(works), "start": 0, "docs": list(works)}
 
 
+def ol_work_body(
+    key: str, *author_keys: str, first_publish_date: str | None = None
+) -> dict[str, object]:
+    """A /works/{id}.json answer for ``key``, naming ``author_keys`` in order.
+
+    Each author is an author-role entry, as the documented API nests it; ``None``
+    leaves ``first_publish_date`` out.
+    """
+    body: dict[str, object] = {
+        "key": key,
+        "title": "Placeholder Work",
+        "type": {"key": "/type/work"},
+        "authors": [
+            {"author": {"key": author}, "type": {"key": "/type/author_role"}}
+            for author in author_keys
+        ],
+    }
+    if first_publish_date is not None:
+        body["first_publish_date"] = first_publish_date
+    return body
+
+
+def ol_author_body(key: str, name: str) -> dict[str, object]:
+    """An /authors/{id}.json answer for ``key``, named ``name``."""
+    return {"key": key, "name": name, "type": {"key": "/type/author"}}
+
+
+def isbn13_of(serial: int) -> str:
+    """An invented, valid ISBN-13: 9790, ``serial`` in eight digits, a check digit.
+
+    Prefix 979 is one no ISBN-10 converts to, so these never meet a converted one.
+    """
+    first12 = f"9790{serial:08d}"
+    total = sum(int(d) * (3 if place % 2 else 1) for place, d in enumerate(first12))
+    return first12 + str(-total % 10)
+
+
+def ol_edition_entry(
+    *,
+    isbn13: Sequence[str] = (),
+    isbn10: Sequence[str] = (),
+    publish_date: str | None = "2005",
+    publishers: Sequence[str] = ("Placeholder Press",),
+    languages: Sequence[str] = ("eng",),
+) -> dict[str, object]:
+    """One edition of a /works/{id}/editions.json answer, shaped as Open Library's.
+
+    Each language is a ``{"key": "/languages/<code>"}`` entry; ``publish_date`` None
+    leaves the date out, and an empty ISBN list leaves its field out, as Open Library
+    does.
+    """
+    entry: dict[str, object] = {
+        "key": "/books/OL1M",
+        "type": {"key": "/type/edition"},
+        "title": "Placeholder Edition",
+        "publishers": list(publishers),
+        "languages": [{"key": f"/languages/{code}"} for code in languages],
+        "works": [{"key": "/works/OL1W"}],
+    }
+    if isbn13:
+        entry["isbn_13"] = list(isbn13)
+    if isbn10:
+        entry["isbn_10"] = list(isbn10)
+    if publish_date is not None:
+        entry["publish_date"] = publish_date
+    return entry
+
+
+def ol_editions_page(
+    *entries: Mapping[str, object], next_offset: int | None = None
+) -> dict[str, object]:
+    """A /works/{id}/editions.json page holding ``entries``.
+
+    ``next_offset`` set adds the ``links.next`` Open Library gives a page with more
+    after it; None leaves it out, as on the last page.
+    """
+    links: dict[str, object] = {"self": "/works/OL1W/editions.json"}
+    if next_offset is not None:
+        links["next"] = f"/works/OL1W/editions.json?offset={next_offset}"
+    return {"links": links, "size": len(entries), "entries": list(entries)}
+
+
 # TMDb payloads
 #
 # Response bodies shaped like TMDb's /search/movie and /movie/{id}/credits answers, built
